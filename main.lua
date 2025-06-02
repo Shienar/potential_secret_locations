@@ -1,0 +1,1 @@
+secretMod = RegisterMod("Potential Secret Locations!", 1)
