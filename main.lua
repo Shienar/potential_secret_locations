@@ -201,11 +201,14 @@ local function updateMap()
 	-- 16x28 for 2x2
 	-- 9x28 for 1x2
 	-- 16x15 for 2x1
-	local room = Game():GetLevel():GetCurrentRoom()
-	local height = room.GetGridHeight(room)
-	local disableBot, disableLeft, disableRight, disableTop = false, false, false, false
+	local level = Game():GetLevel()
+	local room = level:GetCurrentRoom()
+	local index = level:GetCurrentRoomDesc().GridIndex
+	local row, column = (math.floor(index/13) + 1), (index%13 + 1)
 	local shape = room.GetRoomShape(room)
 	
+	--Check for obstacles in front of door, update matrix if necessary.
+	--This was hours of easy, dull, busy work.
 	for i = 0, room.GetGridSize(room) do
 		local entity = room.GetGridEntity(room, i)
 		if entity ~= nil then
@@ -215,23 +218,274 @@ local function updateMap()
 			   entity.GetType(entity) ~= GridEntityType.GRID_SPIDERWEB and
 			   entity.GetType(entity) ~= GridEntityType.GRID_DOOR then
 					
-					--print(entity.GetType(entity)..","..entity.GetGridIndex(entity))
-					
 					if shape == RoomShape.ROOMSHAPE_1x1 or shape == RoomShape.ROOMSHAPE_IH or shape == RoomShape.ROOMSHAPE_IV then
+						--   1
+						-- 3 X 4
+						--   2
 						if entity.GetGridIndex(entity) == 22 then
-							disableTop = true
+							--top (1) is blocked
+							--print("Top is blocked")
+							if row > 1 then matrix[row-1][column] = -1 end
+						elseif entity.GetGridIndex(entity) == 112 then
+							--bottom (2) is blocked
+							--print("Bottom is blocked")
+							if row < 13 then matrix[row+1][column] = -1 end
+						elseif entity.GetGridIndex(entity) == 61 then
+							--left (3) is blocked
+							--print("Left is blocked")
+							if column > 1 then matrix[row][column - 1] = -1 end
+						elseif entity.GetGridIndex(entity) == 73 then
+							--right (4) is blocked
+							--print("Right is blocked")
+							if column < 13 then matrix[row][column + 1] = -1 end
 						end
+					elseif shape == RoomShape.ROOMSHAPE_2x1 or shape == RoomShape.ROOMSHAPE_IIH then
+						--horizontal 2x1
+						--   3 4
+						-- 1 X X 2
+						--   5 6
 						
-						if entity.GetGridIndex(entity) == 112 then
-							disableBot = true
+						if entity.GetGridIndex(entity) == 113  then
+							--1 is blocked
+							--print("1 is blocked")
+							if column > 1 then matrix[row][column - 1] = -1 end
+						elseif entity.GetGridIndex(entity) == 138 then
+							--2 is blocked
+							--print("2 is blocked")
+							if column < 12 then matrix[row][column + 2] = -1 end
+						elseif entity.GetGridIndex(entity) == 35 then
+							--3 is blocked
+							print("3 is blocked")
+							if row > 1 then matrix[row-1][column] = -1 end
+						elseif entity.GetGridIndex(entity) == 48 then 
+							--4 is blocked
+							--print("4 is blocked")
+							if row > 1 and column < 13 then matrix[row-1][column + 1] = -1 end
+						elseif entity.GetGridIndex(entity) == 203 then 
+							--5 is blocked
+							--print("5 is blocked")
+							if row < 13 then matrix[row+1][column] = -1 end
+						elseif entity.GetGridIndex(entity) == 216 then 
+							--6 is blocked
+							--print("6 is blocked")
+							if row < 13 and column < 13 then matrix[row+1][column + 1] = -1 end
 						end
+					elseif shape == RoomShape.ROOMSHAPE_1x2 or shape == RoomShape.ROOMSHAPE_IIV then
+						--vertical 1x2
+						--    1
+						-- 	3 X 5
+						--  4 X 6
+						--    2
 						
-						if entity.GetGridIndex(entity) == 61 then
-							disableLeft = true
+						if entity.GetGridIndex(entity) == 22  then 
+							--1 is blocked
+							--print("1 is blocked")
+							if row > 1 then matrix[row - 1][column] = -1 end
+						elseif entity.GetGridIndex(entity) == 217 then
+							--2 is blocked
+							--print("2 is blocked")
+							if row < 12 then matrix[row + 2][column] = -1 end
+						elseif entity.GetGridIndex(entity) == 61 then 
+							--3 is blocked
+							--print("3 is blocked")
+							if column > 1 then matrix[row][column-1] = -1 end
+						elseif entity.GetGridIndex(entity) == 166 then 
+							--4 is blocked
+							--print("4 is blocked")
+							if column > 1 and row < 13 then matrix[row+1][column-1] = -1 end
+						elseif entity.GetGridIndex(entity) == 73 then 
+							--5 is blocked
+							--print("5 is blocked")
+							if column < 13 then matrix[row][column+1] = -1 end
+						elseif entity.GetGridIndex(entity) == 178 then 
+							--6 is blocked
+							--print("6 is blocked")
+							if column < 13 and row < 13 then matrix[row+1][column+1] = -1 end
 						end
+					elseif shape == RoomShape.ROOMSHAPE_2x2 then
+						--   3 4
+						-- 2 X X 5
+						-- 1 X X 6
+						--   7 8
 						
-						if entity.GetGridIndex(entity) == 73 then
-							disableRight = true
+						if entity.GetGridIndex(entity) == 309  then
+							--1 is blocked
+							--print("1 is blocked")
+							if row < 13 and column > 1 then matrix[row+1][column-1] = -1 end
+						elseif entity.GetGridIndex(entity) == 113 then
+							--2 is blocked
+							--print("2 is blocked")
+							if column > 1 then matrix[row][column-1] = -1 end
+						elseif entity.GetGridIndex(entity) == 35 then
+							--3 is blocked
+							--print("3 is blocked")
+							if row > 1 then matrix[row - 1][column] = -1 end
+						elseif entity.GetGridIndex(entity) == 48 then
+							--4 is blocked
+							--print("4 is blocked")
+							if row > 1 and column < 13 then matrix[row - 1][column+1] = -1 end
+						elseif entity.GetGridIndex(entity) == 138 then 
+							--5 is blocked
+							--print("5 is blocked")
+							if column < 12 then matrix[row][column+2] = -1 end
+						elseif entity.GetGridIndex(entity) == 334 then
+							--6 is blocked
+							--print("6 is blocked")
+							if row < 13 and column < 12 then matrix[row+1][column+2] = -1 end
+						elseif entity.GetGridIndex(entity) == 399 then 
+							--7 is blocked
+							--print("7 is blocked")
+							if row < 12 then matrix[row+2][column] = -1 end
+						elseif entity.GetGridIndex(entity) == 412 then
+							--8 is blocked
+							--print("8 is blocked")
+							if row < 12 and column < 13 then matrix[row+2][column+1] = -1 end
+						end
+					elseif shape == RoomShape.ROOMSHAPE_LTR then
+						--top-right square missing
+						--    3
+						--	2 X 4
+						--	1 X X 5
+						--	  6 7
+						
+						
+						if entity.GetGridIndex(entity) == 309  then
+							--1 is blocked
+							--print("1 is blocked")
+							if row < 13 and column > 1 then matrix[row+1][column-1] = -1 end
+						elseif entity.GetGridIndex(entity) == 113 then 
+							--2 is blocked
+							--print("2 is blocked")
+							if column > 1 then matrix[row][column-1] = -1 end
+						elseif entity.GetGridIndex(entity) == 35 then 
+							--3 is blocked
+							--print("3 is blocked")
+							if row > 1 then matrix[row-1][column] = -1 end
+						elseif entity.GetGridIndex(entity) == 125 or entity.GetGridIndex(entity) == 244 then
+							--4 is blocked
+							--print("4 is blocked")
+							if column < 13 then matrix[row][column+1] = -1 end
+						elseif entity.GetGridIndex(entity) == 334 then  
+							--5 is blocked
+							--print("5 is blocked")
+							if column < 12 and row < 13 then matrix[row+1][column+2] = -1 end
+						elseif entity.GetGridIndex(entity) == 399 then 
+							--6 is blocked
+							--print("6 is blocked")
+							if row < 12 then matrix[row+2][column] = -1 end
+						elseif entity.GetGridIndex(entity) == 412 then  
+							--7 is blocked
+							--print("7 is blocked")
+							if row < 12 and column < 13 then matrix[row+2][column+1] = -1 end
+						end
+					elseif shape == RoomShape.ROOMSHAPE_LTL then
+						--top-left square missing
+						--		3
+						--	  2 X 4
+						--	1 X X 5
+						--	  6 7
+						
+						
+						if entity.GetGridIndex(entity) == 309  then
+							--1 is blocked
+							--print("1 is blocked")
+							if row < 13 and column > 1 then matrix[row+1][column-1] = -1 end
+						elseif entity.GetGridIndex(entity) == 126 or entity.GetGridIndex(entity) == 231 then
+							--2 is blocked
+							--print("2 is blocked")
+							matrix[row][column] = -1
+						elseif entity.GetGridIndex(entity) == 48 then 
+							--3 is blocked
+							--print("3 is blocked")
+							if row > 1 and column < 13 then matrix[row-1][column+1] = -1 end
+						elseif entity.GetGridIndex(entity) == 138 then
+							--4 is blocked
+							--print("4 is blocked")
+							if column < 12 then matrix[row][column+2] = -1 end
+						elseif entity.GetGridIndex(entity) == 334 then 
+							--5 is blocked
+							--print("5 is blocked")
+							if row < 13 and column < 12 then matrix[row+1][column+2] = -1 end
+						elseif entity.GetGridIndex(entity) == 399 then
+							--6 is blocked
+							--print("6 is blocked")
+							if row < 12 then matrix[row+2][column] = -1 end
+						elseif entity.GetGridIndex(entity) == 412 then 
+							--7 is blocked
+							--print("7 is blocked")
+							if row < 12 and column < 13 then matrix[row+2][column+1] = -1 end
+						end
+					elseif shape == RoomShape.ROOMSHAPE_LBR then
+						--bottom-right square missing
+						--    3 4
+						--	2 X X 5
+						--	1 X 6
+						--    7
+						
+						
+						if entity.GetGridIndex(entity) == 309  then
+							--1 is blocked
+							--print("1 is blocked")
+							if row < 13 and column > 1 then matrix[row+1][column-1] = -1 end
+						elseif entity.GetGridIndex(entity) == 113 then
+							--2 is blocked
+							--print("2 is blocked")
+							if column > 1 then matrix[row][column] = -1 end
+						elseif entity.GetGridIndex(entity) == 35 then 
+							--3 is blocked
+							--print("3 is blocked")
+							if row > 1 then matrix[row - 1][column] = -1 end
+						elseif entity.GetGridIndex(entity) == 48 then
+							--4 is blocked
+							--print("4 is blocked")
+							if row > 1 and column < 13 then matrix[row-1][column+1] = -1 end
+						elseif entity.GetGridIndex(entity) == 138 then
+							--5 is blocked
+							--print("5 is blocked")
+							if column < 12 then matrix[row][column+2] = -1 end
+						elseif entity.GetGridIndex(entity) == 321 or entity.GetGridIndex(entity) == 216 then 
+							--6 is blocked
+							--print("6 is blocked")
+							if row < 13 and column < 13 then matrix[row+1][column+1] = -1 end
+						elseif entity.GetGridIndex(entity) == 399 then
+							--7 is blocked
+							--print("7 is blocked")
+							if row < 12 then matrix[row+2][column] = -1 end
+						end
+					elseif shape == RoomShape.ROOMSHAPE_LBL then
+						--bottom-left square missing
+						--    3 4
+						--	2 X X 5
+						--	  1 X 6
+						--    	7
+						if entity.GetGridIndex(entity) == 203 or entity.GetGridIndex(entity) == 322 then
+							--1 is blocked
+							--print("1 is blocked")
+							if row < 13 then matrix[row+1][column] = -1 end
+						elseif entity.GetGridIndex(entity) == 113 then 
+							--2 is blocked
+							--print("2 is blocked")
+							if column > 1 then matrix[row][column-1] = -1 end
+						elseif entity.GetGridIndex(entity) == 35 then
+							--3 is blocked
+							--print("3 is blocked")
+							if row > 1 then matrix[row-1][column]= -1 end
+						elseif entity.GetGridIndex(entity) == 48 then
+							--4 is blocked
+							--print("4 is blocked")
+							if row > 1 and column < 13 then matrix[row-1][column + 1] = -1 end
+						elseif entity.GetGridIndex(entity) == 138 then
+							--5 is blocked
+							--print("5 is blocked")
+							if column < 12 then matrix[row][column+2] = -1 end
+						elseif entity.GetGridIndex(entity) == 334 then
+							--6 is blocked
+							--print("6 is blocked")
+							if row < 13 and column < 12 then matrix[row+1][column+2] = -1 end
+						elseif entity.GetGridIndex(entity) == 412 then
+							--7 is blocked
+							--print("7 is blocked")
+							if row < 12 and column < 13 then matrix[row+2][column+1] = -1 end
 						end
 					end
 			end
@@ -240,10 +494,7 @@ local function updateMap()
 	
 	
 	--debugging, remove later
-	print("BlockBot: "..tostring(disableBot).." BlockLeft: "..tostring(disableLeft).." BlockRight: "..tostring(disableRight).." BlockTop: "..tostring(disableTop))
-	--printMatrix(true, true, false, true, true, false)
-	
-	--TODO - use the disable variables
+	printMatrix(true, true, false, true, true, false)
 end
 
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, updateMap)
