@@ -1,1 +1,14 @@
 # potential_secret_locations
+IMPORTANT: This mod doesn't work unless you have also installed MiniMAPI at https://steamcommunity.com/sharedfiles/filedetails/?id=1978904635&searchtext=minimapi
+
+This is a lua mod for The Binding of Isaac that adds room icons to the minimap in locations where secret rooms and super secret rooms could spawn.
+
+The mod creates and stores a 13x13 matrix of every grid index that a room can occupy, and it populates it with all non-secret rooms whenever a level is loaded. Using this initial grid, the mod makes note of all possible spawn locations for the secret room and super secret room, including their actual locations.
+
+When the player enters a new room, the mod searches for any obstacles, pits, or other gridentities that block possible secret room entrances. If no obstacles could be found blocking a potential spawn location, the player's minimap will be updated to show the spawn location on their minimap. If an obstacle can be found blocking a potential location that has already appeared on the player's minimap, then that potential location is removed from the player's minimap.
+
+All extraneous potential spawn locations will be removed from your minimap when you enter the real secret or super secret room.
+
+TLDR: You will see extra room icons for possible secret and super secret room locations as you explore the map. Some of these icons will get removed as you explore more of the map or enter the "real " secret or super secret rooms.
+
+Steam page: https://steamcommunity.com/sharedfiles/filedetails/?id=3493320807

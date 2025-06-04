@@ -7,11 +7,21 @@ local matrix = {}
 local customSecretListIDs = {}
 local customSuperSecretListIDs = {}
 
+local Enums = {
+	NO_ROOM = -1,
+	SECRET_FALSE = 994,
+	SUPERSECRET_FALSE = 995,
+	ULTRASECRET_FALSE = 996,
+	SECRET = 997,
+	SUPERSECRET = 998,
+	ULTRASECRET = 999,
+}
+
 local function resetMatrix()
 	for i = 1, 13 do
 		matrix[i] = {}
 		for j = 1, 13 do
-			matrix[i][j] = -1
+			matrix[i][j] = Enums.NO_ROOM
 		end
 	end
 end
@@ -27,13 +37,13 @@ end
 local function searchForMapAdditions(row, column, index, row_offset, column_offset)
 	if (row+row_offset) > 0 and (row+row_offset) < 14 and (column+column_offset) > 0 and (column+column_offset) < 14 then
 		local index_offset = 13*row_offset + column_offset
-		if matrix[row+row_offset][column+column_offset] == 994 or matrix[row+row_offset][column+column_offset] == 997 then 
+		if matrix[row+row_offset][column+column_offset] == Enums.SECRET_FALSE or matrix[row+row_offset][column+column_offset] == Enums.SECRET then 
 			--secret
 			if containsVal(customSecretListIDs, (index+index_offset)) then
 				customSecretListIDs[#customSecretListIDs + 1] = index+index_offset
 			end
 			MinimapAPI:AddRoom{ID=(index+index_offset),Position=Vector(column - 1 + column_offset, row - 1 + row_offset),Shape=RoomShape.ROOMSHAPE_1x1,PermanentIcons={"SecretRoom"},Type=RoomType.ROOM_SECRET,DisplayFlags=5}
-		elseif matrix[row+row_offset][column+column_offset] == 995 or matrix[row+row_offset][column+column_offset] == 998 then
+		elseif matrix[row+row_offset][column+column_offset] == Enums.SUPERSECRET_FALSE or matrix[row+row_offset][column+column_offset] == Enums.SUPERSECRET then
 			--super secret
 			if containsVal(customSuperSecretListIDs, (index+index_offset)) then
 				customSuperSecretListIDs[#customSuperSecretListIDs + 1] = index+index_offset
@@ -43,24 +53,11 @@ local function searchForMapAdditions(row, column, index, row_offset, column_offs
 	end
 end
 
---TODO: this doesn't work.
---	DCSWMP9G
 local function removeRoom(index, offset)
 	if offset == nil then offset = 0 end
-	for k,v in pairs(customSecretListIDs) do
-		if v == (index+offset) then
-			MinimapAPI.RemoveRoomByID(index+offset)
-			v = "Removed"
-			return
-		end
+	if type(index) == "number" then
+		MinimapAPI:RemoveRoomByID(index+offset)
 	end
-	for k,v in pairs(customSuperSecretListIDs) do
-		if v == (index+offset) then
-			MinimapAPI.RemoveRoomByID(index+offset)
-			v = "Removed"
-			return
-		end
-	end							
 end
 
 --debugging function
@@ -73,28 +70,28 @@ local function printMatrix(printSecretGuesses, printSuperGuesses, printUltraGues
 			if type(matrix[i][j]) == "string" then
 				str = str.." "..matrix[i][j]
 			elseif matrix[i][j] > 993 then 
-				if printSecretGuesses and matrix[i][j] == 994 then 
+				if printSecretGuesses and matrix[i][j] == Enums.SECRET_FALSE then 
 					--potential secret rooms
 					str = str.." _SC"
-				elseif printSuperGuesses and matrix[i][j] == 995 then 
+				elseif printSuperGuesses and matrix[i][j] == Enums.SUPERSECRET_FALSE then 
 					--potential super secret rooms
 					str = str.." _SS"
-				elseif printUltraGuesses and matrix[i][j] == 996 then 
+				elseif printUltraGuesses and matrix[i][j] == Enums.ULTRASECRET_FALSE then 
 					--potential ultra secret rooms
 					str = str.." _US"
-				elseif printSecret and matrix[i][j] == 997 then 
+				elseif printSecret and matrix[i][j] == Enums.SECRET then 
 					--secret rooms
 					str = str.." SEC"
-				elseif printSuperSecret and matrix[i][j] == 998 then
+				elseif printSuperSecret and matrix[i][j] == Enums.SUPERSECRET then
 					--super secret rooms
 					str = str.." SUP"
-				elseif printUltraSecret and matrix[i][j] == 999 then
+				elseif printUltraSecret and matrix[i][j] == Enums.ULTRASECRET then
 					--ultra secret rooms
 					str = str.." ULT"
 				else
 					str = str.."    "
 				end
-			elseif matrix[i][j] == -1 then
+			elseif matrix[i][j] == Enums.NO_ROOM then
 				str = str.."    "
 			elseif matrix[i][j] < 10 then 
 				str = str.." 00"..matrix[i][j]
@@ -130,11 +127,11 @@ local function findPossibilities()
 			local type = room.Data.Type
 			
 			if type == RoomType.ROOM_SECRET then
-				matrix[math.floor(index/13) + 1][index%13 + 1] = 997
+				matrix[math.floor(index/13) + 1][index%13 + 1] = Enums.SECRET
 			elseif type == RoomType.ROOM_SUPERSECRET then
-				matrix[math.floor(index/13) + 1][index%13 + 1] = 998
+				matrix[math.floor(index/13) + 1][index%13 + 1] = Enums.SUPERSECRET
 			elseif type == RoomType.ROOM_ULTRASECRET then
-				matrix[math.floor(index/13) + 1][index%13 + 1] = 999
+				matrix[math.floor(index/13) + 1][index%13 + 1] = Enums.ULTRASECRET
 			else
 				matrix[math.floor(index/13) + 1][index%13 + 1] = index
 			end
@@ -168,72 +165,103 @@ local function findPossibilities()
 	end
 	
 	--Update matrix with possible secret locations
-	--NOTE: This won't suggest super secret locations in locations that
-	--border secret rooms, which gives hints about the location of secret rooms.
-	--Solution/TODO: Don't give possible super secret locations until secret room has been found.
 	for i = 1, 13 do
 		for j = 1, 13 do
 			--Unused room location slot.
-			if matrix[i][j] == -1 then
+			if matrix[i][j] == Enums.NO_ROOM then
 				local uniqueNeighbors = 0
 				local neighborList = {}
 				
-				
-				if i > 1 and matrix[i-1][j] ~= -1 then 
+				--Check Top neighbor
+				if i > 1 and matrix[i-1][j] ~= Enums.NO_ROOM then 
 					local roomData = level.GetRoomByIdx(level, 13*(i-2) + (j-1)).Data
 					if roomData ~= nil then
 						roomType = roomData.Type
 						roomShape = roomData.Shape
-						if roomType == RoomType.ROOM_BOSS or roomType == RoomType.ROOM_SECRET or roomType == RoomType.ROOM_SUPERSECRET or roomType == RoomType.ROOM_ULTRASECRET or roomShape == RoomShape.ROOMSHAPE_IH or roomShape == RoomShape.ROOMSHAPE_IIH then
+						--illegal top neighbors.
+						if roomType == RoomType.ROOM_BOSS or roomShape == RoomShape.ROOMSHAPE_IH or roomShape == RoomShape.ROOMSHAPE_IIH then
 							break
+						else
+							--more illegal top neighbors. We don't want to indicate to the player that we've found one though.
+							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
+								neighborList["Top"] = matrix[i-1][j]
+								
+								uniqueNeighbors = uniqueNeighbors + 1
+							end
 						end
-						neighborList["Top"] = matrix[i-1][j]
-						uniqueNeighbors = uniqueNeighbors + 1
 					end
 				end
-				if j > 1 and matrix[i][j-1] ~= -1 then 
+				--Check Left Neighbor
+				if j > 1 and matrix[i][j-1] ~= Enums.NO_ROOM then 
 					local roomData = level.GetRoomByIdx(level, 13*(i-1) + (j-2)).Data
 					if roomData ~= nil then
 						roomType = roomData.Type
 						roomShape = roomData.Shape
-						if roomType == RoomType.ROOM_BOSS or roomType == RoomType.ROOM_SECRET or roomType == RoomType.ROOM_SUPERSECRET or roomType == RoomType.ROOM_ULTRASECRET or roomShape == RoomShape.ROOMSHAPE_IV or roomShape == RoomShape.ROOMSHAPE_IIV then
+						--illegal left neighbors.
+						if roomType == RoomType.ROOM_BOSS or roomShape == RoomShape.ROOMSHAPE_IV or roomShape == RoomShape.ROOMSHAPE_IIV then
 							break
+						else
+							--more illegal left neighbors. We don't want to indicate to the player that we've found one though.
+							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
+								neighborList["Left"] = matrix[i][j-1]
+								
+								--ensure uniqueness
+								if neighborList["Left"] ~= neighborList["Top"] then	
+									uniqueNeighbors = uniqueNeighbors + 1
+								end
+							end
 						end
-						neighborList["Left"] = matrix[i][j-1]
-						if neighborList["Left"] ~= neighborList["Top"] then uniqueNeighbors = uniqueNeighbors + 1 end
 					end
 				end
-				if i < 13 and matrix[i+1][j] ~= -1 then 
+				--Check bottom neighbor
+				if i < 13 and matrix[i+1][j] ~= Enums.NO_ROOM then 
 					local roomData = level.GetRoomByIdx(level, 13*(i) + (j-1)).Data
 					if roomData ~= nil then
 						roomType = roomData.Type
 						roomShape = roomData.Shape
-						if roomType == RoomType.ROOM_BOSS or roomType == RoomType.ROOM_SECRET or roomType == RoomType.ROOM_SUPERSECRET or roomType == RoomType.ROOM_ULTRASECRET or roomShape == RoomShape.ROOMSHAPE_IH or roomShape == RoomShape.ROOMSHAPE_IIH then
+						--illegal bottom neighbors.
+						if roomType == RoomType.ROOM_BOSS or roomShape == RoomShape.ROOMSHAPE_IH or roomShape == RoomShape.ROOMSHAPE_IIH then
 							break
+						else
+							--more illegal bottom neighbors. We don't want to indicate to the player that we've found one though.
+							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
+								neighborList["Bottom"] = matrix[i+1][j]
+								
+								--ensure uniqueness
+								if neighborList["Bottom"] ~= neighborList["Top"] and neighborList["Bottom"] ~= neighborList["Left"]  then	
+									uniqueNeighbors = uniqueNeighbors + 1
+								end
+							end
 						end
-						neighborList["Bottom"] = matrix[i+1][j]
-						if neighborList["Bottom"] ~= neighborList["Top"] and neighborList["Bottom"] ~= neighborList["Left"] then uniqueNeighbors = uniqueNeighbors + 1 end
 					end
 				end
-				if i < 13 and matrix[i][j+1] ~= -1 then
+				--check right neighbor
+				if j < 13 and matrix[i][j+1] ~= Enums.NO_ROOM then
 					local roomData = level.GetRoomByIdx(level, 13*(i-1) + (j)).Data
 					if roomData ~= nil then
 						roomType = roomData.Type
 						roomShape = roomData.Shape
-						if roomType == RoomType.ROOM_BOSS or roomType == RoomType.ROOM_SECRET or roomType == RoomType.ROOM_SUPERSECRET or roomType == RoomType.ROOM_ULTRASECRET or roomShape == RoomShape.ROOMSHAPE_IV or roomShape == RoomShape.ROOMSHAPE_IIV  then
+						--illegal right neighbors
+						if roomType == RoomType.ROOM_BOSS or roomShape == RoomShape.ROOMSHAPE_IV or roomShape == RoomShape.ROOMSHAPE_IIV then
 							break
+						else
+							--more illegal left neighbors. We don't want to indicate to the player that we've found one though.
+							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
+								neighborList["Right"] = matrix[i][j+1]
+								
+								--ensure uniqueness
+								if neighborList["Right"] ~= neighborList["Top"] and neighborList["Right"] ~= neighborList["Left"] and neighborList["Right"] ~= neighborList["Bottom"]  then	
+									uniqueNeighbors = uniqueNeighbors + 1
+								end
+							end
 						end
-						neighborList["Right"] = matrix[i][j+1]
-						if neighborList["Right"] ~= neighborList["Top"] and neighborList["Right"] ~= neighborList["Left"] and neighborList["Right"] ~= neighborList["Bottom"] then uniqueNeighbors = uniqueNeighbors + 1 end 
 					end
 				end
 				
 				if uniqueNeighbors == 1 then
-					--supersecret
-					matrix[i][j] = 995 
+					matrix[i][j] = Enums.SUPERSECRET_FALSE 
 				elseif uniqueNeighbors > 1 then
-					--secret
-					matrix[i][j] = 994
+					matrix[i][j] = Enums.SECRET_FALSE
 				end
 				
 			end
@@ -241,8 +269,8 @@ local function findPossibilities()
 	end
 	
 	--debugging
-	--Isaac.GetPlayer().UseCard(Isaac.GetPlayer(), 22) --world card
-	printMatrix(true, true, false, true, true, false)
+	--printMatrix(true, true, true, true, true, true)
+
 	
 end
 
@@ -254,11 +282,7 @@ local function updateMap()
 		return
 	end
 	
-	-- HxW:
-	-- 9x15 for 1x1 (7x13 not counting walls)
-	-- 16x28 for 2x2
-	-- 9x28 for 1x2
-	-- 16x15 for 2x1
+	
 	local level = Game():GetLevel()
 	local room = level:GetCurrentRoom()
 	local index = level:GetCurrentRoomDesc().GridIndex
@@ -283,28 +307,28 @@ local function updateMap()
 							--top (1) is blocked
 							--print("Top is blocked")
 							if row > 1 then 
-								matrix[row-1][column] = -1 
+								matrix[row-1][column] = Enums.NO_ROOM 
 								removeRoom(index, -13)
 							end
 						elseif entity.GetGridIndex(entity) == 112 then
 							--bottom (2) is blocked
 							--print("Bottom is blocked")
 							if row < 13 then 
-								matrix[row+1][column] = -1 
+								matrix[row+1][column] = Enums.NO_ROOM
 								removeRoom(index, 13)
 							end
 						elseif entity.GetGridIndex(entity) == 61 then
 							--left (3) is blocked
 							--print("Left is blocked")
 							if column > 1 then
-								matrix[row][column - 1] = -1 
+								matrix[row][column - 1] = Enums.NO_ROOM 
 								removeRoom(index, -1)
 							end
 						elseif entity.GetGridIndex(entity) == 73 then
 							--right (4) is blocked
 							--print("Right is blocked")
 							if column < 13 then 
-								matrix[row][column + 1] = -1 
+								matrix[row][column + 1] = Enums.NO_ROOM 
 								removeRoom(index, 1)
 							end
 						end
@@ -318,42 +342,42 @@ local function updateMap()
 							--1 is blocked
 							--print("1 is blocked")
 							if column > 1 then
-								matrix[row][column - 1] = -1 
+								matrix[row][column - 1] = Enums.NO_ROOM 
 								removeRoom(index, -1)
 							end
 						elseif entity.GetGridIndex(entity) == 138 then
 							--2 is blocked
 							--print("2 is blocked")
 							if column < 12 then 
-								matrix[row][column + 2] = -1 
+								matrix[row][column + 2] = Enums.NO_ROOM 
 								removeRoom(index, 2)
 							end
 						elseif entity.GetGridIndex(entity) == 35 then
 							--3 is blocked
 							--print("3 is blocked")
 							if row > 1 then 
-								matrix[row-1][column] = -1 
+								matrix[row-1][column] = Enums.NO_ROOM 
 								removeRoom(index, -13)
 							end
 						elseif entity.GetGridIndex(entity) == 48 then 
 							--4 is blocked
 							--print("4 is blocked")
 							if row > 1 and column < 13 then
-								matrix[row-1][column + 1] = -1
+								matrix[row-1][column + 1] = Enums.NO_ROOM
 								removeRoom(index, -12)
 							end
 						elseif entity.GetGridIndex(entity) == 203 then 
 							--5 is blocked
 							--print("5 is blocked")
 							if row < 13 then
-								matrix[row+1][column] = -1 
+								matrix[row+1][column] = Enums.NO_ROOM 
 								removeRoom(index, 13)
 							end
 						elseif entity.GetGridIndex(entity) == 216 then 
 							--6 is blocked
 							--print("6 is blocked")
 							if row < 13 and column < 13 then
-								matrix[row+1][column + 1] = -1
+								matrix[row+1][column + 1] = Enums.NO_ROOM
 								removeRoom(index, 14)
 							end
 						end
@@ -368,42 +392,42 @@ local function updateMap()
 							--1 is blocked
 							--print("1 is blocked")
 							if row > 1 then
-								matrix[row - 1][column] = -1
+								matrix[row - 1][column] = Enums.NO_ROOM
 								removeRoom(index, -13)
 							end
 						elseif entity.GetGridIndex(entity) == 217 then
 							--2 is blocked
 							--print("2 is blocked")
 							if row < 12 then
-								matrix[row + 2][column] = -1
+								matrix[row + 2][column] = Enums.NO_ROOM
 								removeRoom(index, 26)
 							end
 						elseif entity.GetGridIndex(entity) == 61 then 
 							--3 is blocked
 							--print("3 is blocked")
 							if column > 1 then 
-								matrix[row][column-1] = -1 
+								matrix[row][column-1] = Enums.NO_ROOM 
 								removeRoom(index, -1)
 							end
 						elseif entity.GetGridIndex(entity) == 166 then 
 							--4 is blocked
 							--print("4 is blocked")
 							if column > 1 and row < 13 then
-								matrix[row+1][column-1] = -1 
+								matrix[row+1][column-1] = Enums.NO_ROOM 
 								removeRoom(index, 12)
 							end
 						elseif entity.GetGridIndex(entity) == 73 then 
 							--5 is blocked
 							--print("5 is blocked")
 							if column < 13 then 
-								matrix[row][column+1] = -1 
+								matrix[row][column+1] = Enums.NO_ROOM 
 								removeRoom(index, 1)
 							end
 						elseif entity.GetGridIndex(entity) == 178 then 
 							--6 is blocked
 							--print("6 is blocked")
 							if column < 13 and row < 13 then
-								matrix[row+1][column+1] = -1 
+								matrix[row+1][column+1] = Enums.NO_ROOM 
 								removeRoom(index, 14)
 							end
 						end
@@ -417,56 +441,56 @@ local function updateMap()
 							--1 is blocked
 							--print("1 is blocked")
 							if row < 13 and column > 1 then 
-								matrix[row+1][column-1] = -1 
+								matrix[row+1][column-1] = Enums.NO_ROOM 
 								removeRoom(index, 12)
 							end
 						elseif entity.GetGridIndex(entity) == 113 then
 							--2 is blocked
 							--print("2 is blocked")
 							if column > 1 then 
-								matrix[row][column-1] = -1 
+								matrix[row][column-1] = Enums.NO_ROOM 
 								removeRoom(index, -1)
 							end
 						elseif entity.GetGridIndex(entity) == 35 then
 							--3 is blocked
 							--print("3 is blocked")
 							if row > 1 then 
-								matrix[row - 1][column] = -1 
+								matrix[row - 1][column] = Enums.NO_ROOM 
 								removeRoom(index, -13)
 							end
 						elseif entity.GetGridIndex(entity) == 48 then
 							--4 is blocked
 							--print("4 is blocked")
 							if row > 1 and column < 13 then 
-								matrix[row - 1][column+1] = -1 
+								matrix[row - 1][column+1] = Enums.NO_ROOM 
 								removeRoom(index, -12)
 							end
 						elseif entity.GetGridIndex(entity) == 138 then 
 							--5 is blocked
 							--print("5 is blocked")
 							if column < 12 then 
-								matrix[row][column+2] = -1 
+								matrix[row][column+2] = Enums.NO_ROOM 
 								removeRoom(index, 2)
 							end
 						elseif entity.GetGridIndex(entity) == 334 then
 							--6 is blocked
 							--print("6 is blocked")
 							if row < 13 and column < 12 then 
-								matrix[row+1][column+2] = -1 
+								matrix[row+1][column+2] = Enums.NO_ROOM 
 								removeRoom(index, 15)
 							end
 						elseif entity.GetGridIndex(entity) == 399 then 
 							--7 is blocked
 							--print("7 is blocked")
 							if row < 12 then 
-								matrix[row+2][column] = -1 
+								matrix[row+2][column] = Enums.NO_ROOM
 								removeRoom(index, 26)
 							end
 						elseif entity.GetGridIndex(entity) == 412 then
 							--8 is blocked
 							--print("8 is blocked")
 							if row < 12 and column < 13 then 
-								matrix[row+2][column+1] = -1 
+								matrix[row+2][column+1] = Enums.NO_ROOM 
 								removeRoom(index, 27)
 							end
 						end
@@ -482,49 +506,49 @@ local function updateMap()
 							--1 is blocked
 							--print("1 is blocked")
 							if row < 13 and column > 1 then 
-								matrix[row+1][column-1] = -1 
+								matrix[row+1][column-1] = Enums.NO_ROOM 
 								removeRoom(index, 12)
 							end
 						elseif entity.GetGridIndex(entity) == 113 then 
 							--2 is blocked
 							--print("2 is blocked")
 							if column > 1 then 
-								matrix[row][column-1] = -1 
+								matrix[row][column-1] = Enums.NO_ROOM
 								removeRoom(index, -1)
 							end
 						elseif entity.GetGridIndex(entity) == 35 then 
 							--3 is blocked
 							--print("3 is blocked")
 							if row > 1 then 
-								matrix[row-1][column] = -1 
+								matrix[row-1][column] = Enums.NO_ROOM 
 								removeRoom(index, -13)
 							end
 						elseif entity.GetGridIndex(entity) == 125 or entity.GetGridIndex(entity) == 244 then
 							--4 is blocked
 							--print("4 is blocked")
 							if column < 13 then 
-								matrix[row][column+1] = -1 
+								matrix[row][column+1] = Enums.NO_ROOM
 								removeRoom(index, 1)
 							end
 						elseif entity.GetGridIndex(entity) == 334 then  
 							--5 is blocked
 							--print("5 is blocked")
 							if column < 12 and row < 13 then 
-								matrix[row+1][column+2] = -1 
+								matrix[row+1][column+2] = Enums.NO_ROOM 
 								removeRoom(index, 15)
 							end
 						elseif entity.GetGridIndex(entity) == 399 then 
 							--6 is blocked
 							--print("6 is blocked")
 							if row < 12 then 
-								matrix[row+2][column] = -1 
+								matrix[row+2][column] = Enums.NO_ROOM
 								removeRoom(index, 26)
 							end
 						elseif entity.GetGridIndex(entity) == 412 then  
 							--7 is blocked
 							--print("7 is blocked")
 							if row < 12 and column < 13 then 
-								matrix[row+2][column+1] = -1 
+								matrix[row+2][column+1] = Enums.NO_ROOM
 								removeRoom(index, 27)
 							end
 						end
@@ -540,47 +564,47 @@ local function updateMap()
 							--1 is blocked
 							--print("1 is blocked")
 							if row < 13 and column > 1 then 
-								matrix[row+1][column-1] = -1 
+								matrix[row+1][column-1] = Enums.NO_ROOM 
 								removeRoom(index, 12)
 							end
 						elseif entity.GetGridIndex(entity) == 126 or entity.GetGridIndex(entity) == 231 then
 							--2 is blocked
 							--print("2 is blocked")
-							matrix[row][column] = -1
+							matrix[row][column] = Enums.NO_ROOM
 							removeRoom(index, 0)
 						elseif entity.GetGridIndex(entity) == 48 then 
 							--3 is blocked
 							--print("3 is blocked")
 							if row > 1 and column < 13 then 
-								matrix[row-1][column+1] = -1 
+								matrix[row-1][column+1] = Enums.NO_ROOM 
 								removeRoom(index, -12)
 							end
 						elseif entity.GetGridIndex(entity) == 138 then
 							--4 is blocked
 							--print("4 is blocked")
 							if column < 12 then 
-								matrix[row][column+2] = -1 
+								matrix[row][column+2] = Enums.NO_ROOM
 								removeRoom(index, 2)
 							end
 						elseif entity.GetGridIndex(entity) == 334 then 
 							--5 is blocked
 							--print("5 is blocked")
 							if row < 13 and column < 12 then 
-								matrix[row+1][column+2] = -1 
+								matrix[row+1][column+2] = Enums.NO_ROOM 
 								removeRoom(index, 15)
 							end
 						elseif entity.GetGridIndex(entity) == 399 then
 							--6 is blocked
 							--print("6 is blocked")
 							if row < 12 then 
-								matrix[row+2][column] = -1 
+								matrix[row+2][column] = Enums.NO_ROOM 
 								removeRoom(index, 26)
 							end
 						elseif entity.GetGridIndex(entity) == 412 then 
 							--7 is blocked
 							--print("7 is blocked")
 							if row < 12 and column < 13 then 
-								matrix[row+2][column+1] = -1 
+								matrix[row+2][column+1] = Enums.NO_ROOM 
 								removeRoom(index, 27)
 							end
 						end
@@ -595,49 +619,49 @@ local function updateMap()
 							--1 is blocked
 							--print("1 is blocked")
 							if row < 13 and column > 1 then
-								matrix[row+1][column-1] = -1 
+								matrix[row+1][column-1] = Enums.NO_ROOM 
 								removeRoom(index, 12)
 							end
 						elseif entity.GetGridIndex(entity) == 113 then
 							--2 is blocked
 							--print("2 is blocked")
 							if column > 1 then 
-								matrix[row][column] = -1 
+								matrix[row][column] = Enums.NO_ROOM
 								removeRoom(index, -1)
 							end
 						elseif entity.GetGridIndex(entity) == 35 then 
 							--3 is blocked
 							--print("3 is blocked")
 							if row > 1 then
-								matrix[row - 1][column] = -1 
+								matrix[row - 1][column] = Enums.NO_ROOM 
 								removeRoom(index, -13)
 							end
 						elseif entity.GetGridIndex(entity) == 48 then
 							--4 is blocked
 							--print("4 is blocked")
 							if row > 1 and column < 13 then 
-								matrix[row-1][column+1] = -1 
+								matrix[row-1][column+1] = Enums.NO_ROOM
 								removeRoom(index, -12)
 							end
 						elseif entity.GetGridIndex(entity) == 138 then
 							--5 is blocked
 							--print("5 is blocked")
 							if column < 12 then 
-								matrix[row][column+2] = -1 
+								matrix[row][column+2] = Enums.NO_ROOM
 								removeRoom(index, 2)
 							end
 						elseif entity.GetGridIndex(entity) == 321 or entity.GetGridIndex(entity) == 216 then 
 							--6 is blocked
 							--print("6 is blocked")
 							if row < 13 and column < 13 then 
-								matrix[row+1][column+1] = -1 
+								matrix[row+1][column+1] = Enums.NO_ROOM 
 								removeRoom(index, 14)
 							end
 						elseif entity.GetGridIndex(entity) == 399 then
 							--7 is blocked
 							--print("7 is blocked")
 							if row < 12 then 
-								matrix[row+2][column] = -1 
+								matrix[row+2][column] = Enums.NO_ROOM
 								removeRoom(index, 26)
 							end
 						end
@@ -651,49 +675,49 @@ local function updateMap()
 							--1 is blocked
 							--print("1 is blocked")
 							if row < 13 then 
-								matrix[row+1][column] = -1 
+								matrix[row+1][column] = Enums.NO_ROOM 
 								removeRoom(index, 13)
 							end
 						elseif entity.GetGridIndex(entity) == 113 then 
 							--2 is blocked
 							--print("2 is blocked")
 							if column > 1 then 
-								matrix[row][column-1] = -1 
+								matrix[row][column-1] = Enums.NO_ROOM 
 								removeRoom(index, -1)
 							end
 						elseif entity.GetGridIndex(entity) == 35 then
 							--3 is blocked
 							--print("3 is blocked")
 							if row > 1 then 
-								matrix[row-1][column]= -1 
+								matrix[row-1][column]= Enums.NO_ROOM
 								removeRoom(index, -13)
 							end
 						elseif entity.GetGridIndex(entity) == 48 then
 							--4 is blocked
 							--print("4 is blocked")
 							if row > 1 and column < 13 then 
-								matrix[row-1][column + 1] = -1 
+								matrix[row-1][column + 1] = Enums.NO_ROOM 
 								removeRoom(index, -12)
 							end
 						elseif entity.GetGridIndex(entity) == 138 then
 							--5 is blocked
 							--print("5 is blocked")
 							if column < 12 then 
-								matrix[row][column+2] = -1
+								matrix[row][column+2] = Enums.NO_ROOM
 								removeRoom(index, 2)
 							end
 						elseif entity.GetGridIndex(entity) == 334 then
 							--6 is blocked
 							--print("6 is blocked")
 							if row < 13 and column < 12 then 
-								matrix[row+1][column+2] = -1 
+								matrix[row+1][column+2] = Enums.NO_ROOM
 								removeRoom(index, 15)
 							end
 						elseif entity.GetGridIndex(entity) == 412 then
 							--7 is blocked
 							--print("7 is blocked")
 							if row < 12 and column < 13 then 
-								matrix[row+2][column+1] = -1 
+								matrix[row+2][column+1] = Enums.NO_ROOM
 								removeRoom(index, 27)
 							end
 						end
@@ -915,21 +939,63 @@ local function updateMap()
 
 	
 	--debugging
-	printMatrix(true, true, false, true, true, false)
+	--printMatrix(true, true, true, true, true, true)
 end
 
 local function onEnterSecret()
-	--Remove false possibilities on map
+	--Remove false possibilities on map and on matrix
 	local room_type = Game().GetRoom(Game()).GetType(Game().GetRoom(Game()))
 	local index = Game():GetLevel(Game()).GetCurrentRoomDesc(Game():GetLevel(Game())).GridIndex
 	
 	if room_type == RoomType.ROOM_SECRET then
+		--Remove other secret rooms on map
 		for k, v in pairs(customSecretListIDs) do
-			if v ~= index then removeRoom(index) end
+			removeRoom(v)
+		end
+		
+		--Remove other secret rooms on matrix
+		--Remove adjacent super secret rooms on matrix
+		for i = 1, 13 do
+			for j = 1, 13 do
+				if matrix[i][j] == Enums.SECRET_FALSE then
+					matrix[i][j] = Enums.NO_ROOM
+				elseif matrix[i][j] == Enums.SECRET then
+					if i > 1 and matrix[i-1][j] == Enums.SUPERSECRET_FALSE then matrix[i-1][j] = Enums.NO_ROOM end
+					if i < 13 and matrix[i+1][j] == Enums.SUPERSECRET_FALSE then matrix[i+1][j] = Enums.NO_ROOM end
+					if j > 1 and matrix[i][j-1] == Enums.SUPERSECRET_FALSE then matrix[i][j-1] = Enums.NO_ROOM end
+					if j < 13 and matrix[i][j+1] == Enums.SUPERSECRET_FALSE then matrix[i][j+1] = Enums.NO_ROOM end
+				end
+			end
+		end
+		
+		--Remove adjacent super secret rooms on map
+		for k, v in pairs(customSuperSecretListIDs) do
+			if v == (index-13) or v == (index+13) or v == (index-1) or v == (index+1) then removeRoom(v) end
 		end
 	elseif room_type == RoomType.ROOM_SUPERSECRET then
+		--Remove other super secret rooms on map
 		for k, v in pairs(customSuperSecretListIDs) do
-			if v ~= index then removeRoom(index) end
+			removeRoom(v)
+		end
+		
+		--Remove other super secret rooms on matrix
+		--Remove adjacent secret rooms on matrix
+		for i = 1, 13 do
+			for j = 1, 13 do
+				if matrix[i][j] == Enums.SUPERSECRET_FALSE then
+					matrix[i][j] = Enums.NO_ROOM
+				elseif matrix[i][j] == Enums.SUPERSECRET then
+					if i > 1 and matrix[i-1][j] == Enums.SECRET_FALSE then matrix[i-1][j] = Enums.NO_ROOM end
+					if i < 13 and matrix[i+1][j] == Enums.SECRET_FALSE then matrix[i+1][j] = Enums.NO_ROOM end
+					if j > 1 and matrix[i][j-1] == Enums.SECRET_FALSE then matrix[i][j-1] = Enums.NO_ROOM end
+					if j < 13 and matrix[i][j+1] == Enums.SECRET_FALSE then matrix[i][j+1] = Enums.NO_ROOM end
+				end
+			end
+		end
+		
+		--Remove adjacent secret rooms on map
+		for k, v in pairs(customSecretListIDs) do
+			if v == (index-13) or v == (index+13) or v == (index-1) or v == (index+1) then removeRoom(v) end
 		end
 	end
 end
