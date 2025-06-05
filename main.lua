@@ -6,6 +6,10 @@ local MinimapAPI = require("scripts.minimapapi")
 local matrix = {}
 local customSecretListIDs = {}
 local customSuperSecretListIDs = {}
+local secretCount = 0
+local superSecretCount = 0
+local secretFound = {}
+local superSecretFound = { }
 
 local Enums = {
 	NO_ROOM = -1,
@@ -26,7 +30,7 @@ local function resetMatrix()
 	end
 end
 
-local function containsVal(set, val)
+local function notContainsVal(set, val)
 	for k, v in pairs(set) do
 		if v==val then return false end
 	end
@@ -39,13 +43,13 @@ local function searchForMapAdditions(row, column, index, row_offset, column_offs
 		local index_offset = 13*row_offset + column_offset
 		if matrix[row+row_offset][column+column_offset] == Enums.SECRET_FALSE or matrix[row+row_offset][column+column_offset] == Enums.SECRET then 
 			--secret
-			if containsVal(customSecretListIDs, (index+index_offset)) then
+			if notContainsVal(customSecretListIDs, (index+index_offset)) then
 				customSecretListIDs[#customSecretListIDs + 1] = index+index_offset
 			end
 			MinimapAPI:AddRoom{ID=(index+index_offset),Position=Vector(column - 1 + column_offset, row - 1 + row_offset),Shape=RoomShape.ROOMSHAPE_1x1,PermanentIcons={"SecretRoom"},Type=RoomType.ROOM_SECRET,DisplayFlags=5}
 		elseif matrix[row+row_offset][column+column_offset] == Enums.SUPERSECRET_FALSE or matrix[row+row_offset][column+column_offset] == Enums.SUPERSECRET then
 			--super secret
-			if containsVal(customSuperSecretListIDs, (index+index_offset)) then
+			if notContainsVal(customSuperSecretListIDs, (index+index_offset)) then
 				customSuperSecretListIDs[#customSuperSecretListIDs + 1] = index+index_offset
 			end
 			MinimapAPI:AddRoom{ID=(index+index_offset),Position=Vector(column - 1 + column_offset, row - 1 + row_offset),Shape=RoomShape.ROOMSHAPE_1x1,PermanentIcons={"SuperSecretRoom"},Type=RoomType.ROOM_SUPERSECRET,DisplayFlags=5}
@@ -112,6 +116,8 @@ local function findPossibilities()
 	resetMatrix()
 	customSecretListIDs = {}
 	customSuperSecretListIDs = {}
+	secretFound = {}
+	superSecretFound = { }
 	
 	--Iterate through each room and update the matrix.
 	local level = Game():GetLevel()
@@ -161,6 +167,20 @@ local function findPossibilities()
 			
 			--bottom right
 			if shape ~= RoomShape.ROOMSHAPE_LBR then matrix[(math.floor(index/13) + 1) + 1][(index%13 + 1) + 1] = index end
+		end
+	end
+	
+	
+	--Count the number of secret / super secret locations.
+	secretCount = 0
+	superSecretCount = 0
+	for i = 1, 13 do
+		for j = 1, 13 do
+			if matrix[i][j] == Enums.SECRET then
+				secretCount = secretCount + 1
+			elseif matrix[i][j] == Enums.SUPERSECRET then
+				superSecretCount = superSecretCount + 1
+			end
 		end
 	end
 	
@@ -945,57 +965,100 @@ end
 local function onEnterSecret()
 	--Remove false possibilities on map and on matrix
 	local room_type = Game().GetRoom(Game()).GetType(Game().GetRoom(Game()))
-	local index = Game():GetLevel(Game()).GetCurrentRoomDesc(Game():GetLevel(Game())).GridIndex
+	local level = Game().GetLevel(Game())
+	local index = level.GetCurrentRoomDesc(level).GridIndex
+	local row, column = ((math.floor(index/13) + 1)), ((index % 13) + 1)
+
 	
 	if room_type == RoomType.ROOM_SECRET then
-		--Remove other secret rooms on map
-		for k, v in pairs(customSecretListIDs) do
-			removeRoom(v)
+	
+		if notContainsVal(secretFound, index) then
+			secretFound[#secretFound + 1] = index
 		end
-		
-		--Remove other secret rooms on matrix
-		--Remove adjacent super secret rooms on matrix
-		for i = 1, 13 do
-			for j = 1, 13 do
-				if matrix[i][j] == Enums.SECRET_FALSE then
-					matrix[i][j] = Enums.NO_ROOM
-				elseif matrix[i][j] == Enums.SECRET then
-					if i > 1 and matrix[i-1][j] == Enums.SUPERSECRET_FALSE then matrix[i-1][j] = Enums.NO_ROOM end
-					if i < 13 and matrix[i+1][j] == Enums.SUPERSECRET_FALSE then matrix[i+1][j] = Enums.NO_ROOM end
-					if j > 1 and matrix[i][j-1] == Enums.SUPERSECRET_FALSE then matrix[i][j-1] = Enums.NO_ROOM end
-					if j < 13 and matrix[i][j+1] == Enums.SUPERSECRET_FALSE then matrix[i][j+1] = Enums.NO_ROOM end
-				end
-			end
-		end
+	
+		--Remove adjacent secret/super secret rooms on matrix.
+		if row > 1 and matrix[row-1][column] == Enums.SUPERSECRET_FALSE or matrix[row-1][column] == Enums.SECRET_FALSE then matrix[row-1][column] = Enums.NO_ROOM end
+		if row < 13 and matrix[row+1][column] == Enums.SUPERSECRET_FALSE or matrix[row+1][column] == Enums.SECRET_FALSE then matrix[row+1][column] = Enums.NO_ROOM end
+		if column > 1 and matrix[row][column-1] == Enums.SUPERSECRET_FALSE or matrix[row][column-1] == Enums.SECRET_FALSE then matrix[row][column-1] = Enums.NO_ROOM end
+		if column < 13 and matrix[row][column+1] == Enums.SUPERSECRET_FALSE or matrix[row][column+1] == Enums.SECRET_FALSE then matrix[row][column+1] = Enums.NO_ROOM end
 		
 		--Remove adjacent super secret rooms on map
 		for k, v in pairs(customSuperSecretListIDs) do
-			if v == (index-13) or v == (index+13) or v == (index-1) or v == (index+1) then removeRoom(v) end
-		end
-	elseif room_type == RoomType.ROOM_SUPERSECRET then
-		--Remove other super secret rooms on map
-		for k, v in pairs(customSuperSecretListIDs) do
-			removeRoom(v)
-		end
-		
-		--Remove other super secret rooms on matrix
-		--Remove adjacent secret rooms on matrix
-		for i = 1, 13 do
-			for j = 1, 13 do
-				if matrix[i][j] == Enums.SUPERSECRET_FALSE then
-					matrix[i][j] = Enums.NO_ROOM
-				elseif matrix[i][j] == Enums.SUPERSECRET then
-					if i > 1 and matrix[i-1][j] == Enums.SECRET_FALSE then matrix[i-1][j] = Enums.NO_ROOM end
-					if i < 13 and matrix[i+1][j] == Enums.SECRET_FALSE then matrix[i+1][j] = Enums.NO_ROOM end
-					if j > 1 and matrix[i][j-1] == Enums.SECRET_FALSE then matrix[i][j-1] = Enums.NO_ROOM end
-					if j < 13 and matrix[i][j+1] == Enums.SECRET_FALSE then matrix[i][j+1] = Enums.NO_ROOM end
-				end
+			if v == (index-13) or v == (index+13) or v == (index-1) or v == (index+1) then 
+				removeRoom(v) 
+				v = "Removed"
 			end
 		end
 		
 		--Remove adjacent secret rooms on map
 		for k, v in pairs(customSecretListIDs) do
-			if v == (index-13) or v == (index+13) or v == (index-1) or v == (index+1) then removeRoom(v) end
+			if v == (index-13) or v == (index+13) or v == (index-1) or v == (index+1) then 
+				removeRoom(v) 
+				v = "Removed"
+			end
+		end
+		
+		--if all secrets have been found...
+		if #secretFound == secretCount then
+			--Remove other secret rooms on map
+			for k, v in pairs(customSecretListIDs) do
+				removeRoom(v)
+			end
+			
+			--Remove other secret rooms on matrix
+			for i = 1, 13 do
+				for j = 1, 13 do
+					if matrix[i][j] == Enums.SECRET_FALSE then
+						matrix[i][j] = Enums.NO_ROOM
+					end
+				end
+			end
+			
+			
+		end
+	elseif room_type == RoomType.ROOM_SUPERSECRET then
+	
+		if notContainsVal(secretFound, index) then
+			superSecretFound[#superSecretFound + 1] = index
+		end
+	
+		--Remove adjacent secret/super secret rooms on matrix.
+		if row > 1 and matrix[row-1][column] == Enums.SUPERSECRET_FALSE or matrix[row-1][column] == Enums.SECRET_FALSE then matrix[row-1][column] = Enums.NO_ROOM end
+		if row < 13 and matrix[row+1][column] == Enums.SUPERSECRET_FALSE or matrix[row+1][column] == Enums.SECRET_FALSE then matrix[row+1][column] = Enums.NO_ROOM end
+		if column > 1 and matrix[row][column-1] == Enums.SUPERSECRET_FALSE or matrix[row][column-1] == Enums.SECRET_FALSE then matrix[row][column-1] = Enums.NO_ROOM end
+		if column < 13 and matrix[row][column+1] == Enums.SUPERSECRET_FALSE or matrix[row][column+1] == Enums.SECRET_FALSE then matrix[row][column+1] = Enums.NO_ROOM end
+		
+		--Remove adjacent super secret rooms on map
+		for k, v in pairs(customSuperSecretListIDs) do
+			if v == (index-13) or v == (index+13) or v == (index-1) or v == (index+1) then 
+				removeRoom(v) 
+				v = "Removed"
+			end
+		end
+		
+		--Remove adjacent secret rooms on map
+		for k, v in pairs(customSecretListIDs) do
+			if v == (index-13) or v == (index+13) or v == (index-1) or v == (index+1) then 
+				removeRoom(v) 
+				v = "Removed"
+			end
+		end
+		
+		if #superSecretFound == superSecretCount then
+			--Remove other super secret rooms on map
+			for k, v in pairs(customSuperSecretListIDs) do
+				removeRoom(v)
+			end
+			
+			--Remove other super secret rooms on matrix
+			--Remove adjacent secret rooms on matrix
+			for i = 1, 13 do
+				for j = 1, 13 do
+					if matrix[i][j] == Enums.SUPERSECRET_FALSE then
+						matrix[i][j] = Enums.NO_ROOM
+					end
+				end
+			end
 		end
 	end
 end

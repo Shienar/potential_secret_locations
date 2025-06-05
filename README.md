@@ -1,5 +1,6 @@
 # potential_secret_locations
 IMPORTANT: This mod doesn't work unless you have also installed MiniMAPI at https://steamcommunity.com/sharedfiles/filedetails/?id=1978904635&searchtext=minimapi
+(It works best with "API Default Options")
 
 This is a lua mod for The Binding of Isaac that adds room icons to the minimap in locations where secret rooms and super secret rooms could spawn.
 
