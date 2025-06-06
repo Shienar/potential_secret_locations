@@ -3,13 +3,23 @@ secretMod = RegisterMod("Potential Secret Locations!", 1)
 require("scripts.minimapapi.init")
 local MinimapAPI = require("scripts.minimapapi")
 
+--13x13 grid of map w/ potential locations.
 local matrix = {}
+
+--ID lists for real locations. Allows for tracking of multiple.
 local customSecretListIDs = {}
 local customSuperSecretListIDs = {}
+
+--Tracks total number of secret rooms found. 
+--Prevents hiding possibilities until all have been found.
 local secretCount = 0
 local superSecretCount = 0
 local secretFound = {}
 local superSecretFound = { }
+
+--This mod should avoid doing extra work if the player has items like blue map or spelunker's hat already.
+local vanillaRevealSecret = false
+local vanillaRevealSuperSecret = false
 
 local Enums = {
 	NO_ROOM = -1,
@@ -42,17 +52,21 @@ local function searchForMapAdditions(row, column, index, row_offset, column_offs
 	if (row+row_offset) > 0 and (row+row_offset) < 14 and (column+column_offset) > 0 and (column+column_offset) < 14 then
 		local index_offset = 13*row_offset + column_offset
 		if matrix[row+row_offset][column+column_offset] == Enums.SECRET_FALSE or matrix[row+row_offset][column+column_offset] == Enums.SECRET then 
-			--secret
-			if notContainsVal(customSecretListIDs, (index+index_offset)) then
-				customSecretListIDs[#customSecretListIDs + 1] = index+index_offset
+			if vanillaRevealSecret == false then
+				--secret
+				if notContainsVal(customSecretListIDs, (index+index_offset)) then
+					customSecretListIDs[#customSecretListIDs + 1] = index+index_offset
+				end
+				MinimapAPI:AddRoom{ID=(index+index_offset),Position=Vector(column - 1 + column_offset, row - 1 + row_offset),Shape=RoomShape.ROOMSHAPE_1x1,PermanentIcons={"SecretRoom"},Type=RoomType.ROOM_SECRET,DisplayFlags=5}
 			end
-			MinimapAPI:AddRoom{ID=(index+index_offset),Position=Vector(column - 1 + column_offset, row - 1 + row_offset),Shape=RoomShape.ROOMSHAPE_1x1,PermanentIcons={"SecretRoom"},Type=RoomType.ROOM_SECRET,DisplayFlags=5}
 		elseif matrix[row+row_offset][column+column_offset] == Enums.SUPERSECRET_FALSE or matrix[row+row_offset][column+column_offset] == Enums.SUPERSECRET then
-			--super secret
-			if notContainsVal(customSuperSecretListIDs, (index+index_offset)) then
-				customSuperSecretListIDs[#customSuperSecretListIDs + 1] = index+index_offset
+			if vanillaRevealSuperSecret == false then
+				--super secret
+				if notContainsVal(customSuperSecretListIDs, (index+index_offset)) then
+					customSuperSecretListIDs[#customSuperSecretListIDs + 1] = index+index_offset
+				end
+				MinimapAPI:AddRoom{ID=(index+index_offset),Position=Vector(column - 1 + column_offset, row - 1 + row_offset),Shape=RoomShape.ROOMSHAPE_1x1,PermanentIcons={"SuperSecretRoom"},Type=RoomType.ROOM_SUPERSECRET,DisplayFlags=5}
 			end
-			MinimapAPI:AddRoom{ID=(index+index_offset),Position=Vector(column - 1 + column_offset, row - 1 + row_offset),Shape=RoomShape.ROOMSHAPE_1x1,PermanentIcons={"SuperSecretRoom"},Type=RoomType.ROOM_SUPERSECRET,DisplayFlags=5}
 		end
 	end
 end
@@ -109,6 +123,64 @@ local function printMatrix(printSecretGuesses, printSuperGuesses, printUltraGues
 	end
 end
 
+local function clearFakeSecrets(isSuperSecret)
+	if isSuperSecret == false then
+		--Remove fake secret rooms on map
+		for k, v in pairs(customSecretListIDs) do
+			removeRoom(v)
+		end
+				
+		--Remove fake secret rooms on matrix
+		for i = 1, 13 do
+			for j = 1, 13 do
+				if matrix[i][j] == Enums.SECRET_FALSE then
+					matrix[i][j] = Enums.NO_ROOM
+				end
+			end
+		end
+	else
+		--Remove fake super secret rooms on map
+		for k, v in pairs(customSuperSecretListIDs) do
+			removeRoom(v)
+		end
+				
+		--Remove fake secret rooms on matrix
+		for i = 1, 13 do
+			for j = 1, 13 do
+				if matrix[i][j] == Enums.SUPERSECRET_FALSE then
+					matrix[i][j] = Enums.NO_ROOM
+				end
+			end
+		end
+	end
+end
+
+--index = level.GetCurrentRoomDesc(level).GridIndex
+local function clearNeighboringSecrets(index)
+	local row, column = ((math.floor(index/13) + 1)), ((index % 13) + 1)
+	
+	--Remove adjacent secret/super secret rooms on matrix.
+	if row > 1 and matrix[row-1][column] == Enums.SUPERSECRET_FALSE or matrix[row-1][column] == Enums.SECRET_FALSE then matrix[row-1][column] = Enums.NO_ROOM end
+	if row < 13 and matrix[row+1][column] == Enums.SUPERSECRET_FALSE or matrix[row+1][column] == Enums.SECRET_FALSE then matrix[row+1][column] = Enums.NO_ROOM end
+	if column > 1 and matrix[row][column-1] == Enums.SUPERSECRET_FALSE or matrix[row][column-1] == Enums.SECRET_FALSE then matrix[row][column-1] = Enums.NO_ROOM end
+	if column < 13 and matrix[row][column+1] == Enums.SUPERSECRET_FALSE or matrix[row][column+1] == Enums.SECRET_FALSE then matrix[row][column+1] = Enums.NO_ROOM end
+		
+	--Remove adjacent super secret rooms on map
+	for k, v in pairs(customSuperSecretListIDs) do
+		if v == (index-13) or v == (index+13) or v == (index-1) or v == (index+1) then 
+			removeRoom(v) 
+			table.remove(customSuperSecretListIDs, k)
+		end
+	end
+		
+	--Remove adjacent secret rooms on map
+	for k, v in pairs(customSecretListIDs) do
+		if v == (index-13) or v == (index+13) or v == (index-1) or v == (index+1) then 
+			removeRoom(v) 
+			table.remove(customSuperSecretListIDs, k)
+		end
+	end
+end
 
 --Fill matrix with the floor's possible secret/super secret room locations by just looking at the map.
 local function findPossibilities()
@@ -118,10 +190,18 @@ local function findPossibilities()
 	customSuperSecretListIDs = {}
 	secretFound = {}
 	superSecretFound = { }
-	
-	--Iterate through each room and update the matrix.
 	local level = Game():GetLevel()
 	local rooms = level:GetRooms()
+	
+	--don't do anything in the ascent.
+	--don't do anything at home.
+	--don't do anything in greed mode.
+	if level.IsAscent(level) == true then return end
+	if level.GetStage(level) == 13 then return end
+	if Game().IsGreedMode(Game()) == true then return end
+	
+	--Iterate through each room and update the matrix.
+	
 	for i = 0, rooms.Size-1 do
 		local room = rooms:Get(i)
 		local index = room.GridIndex
@@ -184,6 +264,9 @@ local function findPossibilities()
 		end
 	end
 	
+	--Don't do anything extra if the player has items that make the mod irrelevant.
+	if vanillaRevealSecret and vanillaRevealSuperSecret then return end
+	
 	--Update matrix with possible secret locations
 	for i = 1, 13 do
 		for j = 1, 13 do
@@ -191,6 +274,7 @@ local function findPossibilities()
 			if matrix[i][j] == Enums.NO_ROOM then
 				local uniqueNeighbors = 0
 				local neighborList = {}
+				local hasSpecialNeighbor = false
 				
 				--Check Top neighbor
 				if i > 1 and matrix[i-1][j] ~= Enums.NO_ROOM then 
@@ -207,6 +291,11 @@ local function findPossibilities()
 								neighborList["Top"] = matrix[i-1][j]
 								
 								uniqueNeighbors = uniqueNeighbors + 1
+							end
+							
+							--supersecret rooms can't spawn adjacent special rooms.
+							if roomType ~= RoomType.ROOM_DEFAULT then
+								hasSpecialNeighbor = true
 							end
 						end
 					end
@@ -230,6 +319,11 @@ local function findPossibilities()
 									uniqueNeighbors = uniqueNeighbors + 1
 								end
 							end
+							
+							--supersecret rooms can't spawn adjacent special rooms.
+							if roomType ~= RoomType.ROOM_DEFAULT then
+								hasSpecialNeighbor = true
+							end
 						end
 					end
 				end
@@ -251,6 +345,11 @@ local function findPossibilities()
 								if neighborList["Bottom"] ~= neighborList["Top"] and neighborList["Bottom"] ~= neighborList["Left"]  then	
 									uniqueNeighbors = uniqueNeighbors + 1
 								end
+							end
+							
+							--supersecret rooms can't spawn adjacent special rooms.
+							if roomType ~= RoomType.ROOM_DEFAULT then
+								hasSpecialNeighbor = true
 							end
 						end
 					end
@@ -274,11 +373,16 @@ local function findPossibilities()
 									uniqueNeighbors = uniqueNeighbors + 1
 								end
 							end
+							
+							--supersecret rooms can't spawn adjacent special rooms.
+							if roomType ~= RoomType.ROOM_DEFAULT then
+								hasSpecialNeighbor = true
+							end
 						end
 					end
 				end
 				
-				if uniqueNeighbors == 1 then
+				if uniqueNeighbors == 1 and hasSpecialNeighbor == false then
 					matrix[i][j] = Enums.SUPERSECRET_FALSE 
 				elseif uniqueNeighbors > 1 then
 					matrix[i][j] = Enums.SECRET_FALSE
@@ -290,12 +394,15 @@ local function findPossibilities()
 	
 	--debugging
 	--printMatrix(true, true, true, true, true, true)
-
 	
 end
 
 --Remove potential secret room locations by checking grid locations.
+--Add remaining locations
 local function updateMap()
+	
+	--Don't do anything if the player has items that make the mod irrelevant.
+	if vanillaRevealSecret and vanillaRevealSuperSecret then return end
 	
 	if matrix[1] == nil then
 		resetMatrix() 
@@ -962,13 +1069,12 @@ local function updateMap()
 	--printMatrix(true, true, true, true, true, true)
 end
 
+--Remove some potential locations from map when you enter a real location.
 local function onEnterSecret()
 	--Remove false possibilities on map and on matrix
 	local room_type = Game().GetRoom(Game()).GetType(Game().GetRoom(Game()))
 	local level = Game().GetLevel(Game())
 	local index = level.GetCurrentRoomDesc(level).GridIndex
-	local row, column = ((math.floor(index/13) + 1)), ((index % 13) + 1)
-
 	
 	if room_type == RoomType.ROOM_SECRET then
 	
@@ -976,45 +1082,12 @@ local function onEnterSecret()
 			secretFound[#secretFound + 1] = index
 		end
 	
-		--Remove adjacent secret/super secret rooms on matrix.
-		if row > 1 and matrix[row-1][column] == Enums.SUPERSECRET_FALSE or matrix[row-1][column] == Enums.SECRET_FALSE then matrix[row-1][column] = Enums.NO_ROOM end
-		if row < 13 and matrix[row+1][column] == Enums.SUPERSECRET_FALSE or matrix[row+1][column] == Enums.SECRET_FALSE then matrix[row+1][column] = Enums.NO_ROOM end
-		if column > 1 and matrix[row][column-1] == Enums.SUPERSECRET_FALSE or matrix[row][column-1] == Enums.SECRET_FALSE then matrix[row][column-1] = Enums.NO_ROOM end
-		if column < 13 and matrix[row][column+1] == Enums.SUPERSECRET_FALSE or matrix[row][column+1] == Enums.SECRET_FALSE then matrix[row][column+1] = Enums.NO_ROOM end
-		
-		--Remove adjacent super secret rooms on map
-		for k, v in pairs(customSuperSecretListIDs) do
-			if v == (index-13) or v == (index+13) or v == (index-1) or v == (index+1) then 
-				removeRoom(v) 
-				v = "Removed"
-			end
-		end
-		
-		--Remove adjacent secret rooms on map
-		for k, v in pairs(customSecretListIDs) do
-			if v == (index-13) or v == (index+13) or v == (index-1) or v == (index+1) then 
-				removeRoom(v) 
-				v = "Removed"
-			end
-		end
+		--clear neighboring fake secret/super secret locations
+		clearNeighboringSecrets(index)
 		
 		--if all secrets have been found...
 		if #secretFound == secretCount then
-			--Remove other secret rooms on map
-			for k, v in pairs(customSecretListIDs) do
-				removeRoom(v)
-			end
-			
-			--Remove other secret rooms on matrix
-			for i = 1, 13 do
-				for j = 1, 13 do
-					if matrix[i][j] == Enums.SECRET_FALSE then
-						matrix[i][j] = Enums.NO_ROOM
-					end
-				end
-			end
-			
-			
+			clearFakeSecrets(false)
 		end
 	elseif room_type == RoomType.ROOM_SUPERSECRET then
 	
@@ -1022,47 +1095,68 @@ local function onEnterSecret()
 			superSecretFound[#superSecretFound + 1] = index
 		end
 	
-		--Remove adjacent secret/super secret rooms on matrix.
-		if row > 1 and matrix[row-1][column] == Enums.SUPERSECRET_FALSE or matrix[row-1][column] == Enums.SECRET_FALSE then matrix[row-1][column] = Enums.NO_ROOM end
-		if row < 13 and matrix[row+1][column] == Enums.SUPERSECRET_FALSE or matrix[row+1][column] == Enums.SECRET_FALSE then matrix[row+1][column] = Enums.NO_ROOM end
-		if column > 1 and matrix[row][column-1] == Enums.SUPERSECRET_FALSE or matrix[row][column-1] == Enums.SECRET_FALSE then matrix[row][column-1] = Enums.NO_ROOM end
-		if column < 13 and matrix[row][column+1] == Enums.SUPERSECRET_FALSE or matrix[row][column+1] == Enums.SECRET_FALSE then matrix[row][column+1] = Enums.NO_ROOM end
+		--clear neighboring fake secret/super secret locations
+		clearNeighboringSecrets(index)
 		
-		--Remove adjacent super secret rooms on map
-		for k, v in pairs(customSuperSecretListIDs) do
-			if v == (index-13) or v == (index+13) or v == (index-1) or v == (index+1) then 
-				removeRoom(v) 
-				v = "Removed"
-			end
-		end
-		
-		--Remove adjacent secret rooms on map
-		for k, v in pairs(customSecretListIDs) do
-			if v == (index-13) or v == (index+13) or v == (index-1) or v == (index+1) then 
-				removeRoom(v) 
-				v = "Removed"
-			end
-		end
-		
+		--clear fake super secret locations.
 		if #superSecretFound == superSecretCount then
-			--Remove other super secret rooms on map
-			for k, v in pairs(customSuperSecretListIDs) do
-				removeRoom(v)
-			end
-			
-			--Remove other super secret rooms on matrix
-			--Remove adjacent secret rooms on matrix
-			for i = 1, 13 do
-				for j = 1, 13 do
-					if matrix[i][j] == Enums.SUPERSECRET_FALSE then
-						matrix[i][j] = Enums.NO_ROOM
-					end
-				end
-			end
+			clearFakeSecrets(true)
 		end
+	end
+end
+
+--Updates map on certain item uses.
+local function onActive(mod, itemType, rng, player, flags, slot, data)
+	
+	
+	if itemType == CollectibleType.COLLECTIBLE_CRYSTAL_BALL then
+		--Same effect as world/sun/world
+		
+		clearFakeSecrets(false)
+		
+	elseif itemType == CollectibleType.COLLECTIBLE_DADS_KEY then
+		--clear neighboring fake secret/super secret locations
+		clearNeighboringSecrets(Game().GetLevel(Game()).GetCurrentRoomDesc(Game().GetLevel(Game())).GridIndex)
+	end
+	
+	return nil
+end
+
+--Updates map when cards like sun/world are used.
+local function onCard(mod, card, player, flags)
+	if card == Card.CARD_SUN or card == Card.CARD_WORLD or card == Card.RUNE_ANSUZ then
+		--Remove extra secret room possibilities.
+		
+		clearFakeSecrets(false)
+			
+		if card == Card.RUNE_ANSUZ then
+			--Remove extra super secret room possibilities
+			clearFakeSecrets(true)
+		end
+	elseif card == Card.CARD_GET_OUT_OF_JAIL then
+		--clear neighboring fake secret/super secret locations
+		clearNeighboringSecrets(Game().GetLevel(Game()).GetCurrentRoomDesc(Game().GetLevel(Game())).GridIndex)
+	end
+end
+
+--Check if isaac has vanilla objects that reveal secret locations.
+local function onPickupPassiveVision()
+	--player has blue map or spelunker's hat.
+	if (vanillaRevealSuperSecret == false or vanillaRevealSecret == false) and (Isaac.GetPlayer().HasCollectible(Isaac.GetPlayer(), CollectibleType.COLLECTIBLE_BLUE_MAP, true) or Isaac.GetPlayer().HasCollectible(Isaac.GetPlayer(), CollectibleType.COLLECTIBLE_SPELUNKER_HAT, true)) then 
+			vanillaRevealSuperSecret = true
+			vanillaRevealSecret = true
+			clearFakeSecrets(false)
+			clearFakeSecrets(true)
+	elseif vanillaRevealSecret == false and Isaac.GetPlayer().HasCollectible(Isaac.GetPlayer(), CollectibleType.COLLECTIBLE_MIND, true) then
+		vanillaRevealSecret = true
+		clearFakeSecrets(false)
 	end
 end
 
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, updateMap)
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, onEnterSecret)
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_LEVEL, findPossibilities)
+secretMod:AddCallback(ModCallbacks.MC_USE_CARD, onCard)
+secretMod:AddCallback(ModCallbacks.MC_PRE_USE_ITEM, onActive)
+secretMod:AddCallback(ModCallbacks.MC_EVALUATE_CACHE, onPickupPassiveVision)
+
