@@ -177,7 +177,7 @@ local function clearNeighboringSecrets(index)
 	for k, v in pairs(customSecretListIDs) do
 		if v == (index-13) or v == (index+13) or v == (index-1) or v == (index+1) then 
 			removeRoom(v) 
-			table.remove(customSuperSecretListIDs, k)
+			table.remove(customSecretListIDs, k)
 		end
 	end
 end
@@ -1077,7 +1077,7 @@ local function onEnterSecret()
 	local index = level.GetCurrentRoomDesc(level).GridIndex
 	
 	if room_type == RoomType.ROOM_SECRET then
-	
+		
 		if notContainsVal(secretFound, index) then
 			secretFound[#secretFound + 1] = index
 		end
@@ -1153,10 +1153,15 @@ local function onPickupPassiveVision()
 	end
 end
 
+local function resetValues()
+	vanillaRevealSecret = false
+	vanillaRevealSuperSecret = false
+end
+
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, updateMap)
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, onEnterSecret)
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_LEVEL, findPossibilities)
 secretMod:AddCallback(ModCallbacks.MC_USE_CARD, onCard)
 secretMod:AddCallback(ModCallbacks.MC_PRE_USE_ITEM, onActive)
 secretMod:AddCallback(ModCallbacks.MC_EVALUATE_CACHE, onPickupPassiveVision)
-
+secretMod:AddCallback(ModCallbacks.MC_POST_GAME_STARTED, resetValues)
