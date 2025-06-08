@@ -80,7 +80,7 @@ end
 
 --debugging function
 local function printMatrix(printSecretGuesses, printSuperGuesses, printUltraGuesses, printSecret, printSuperSecret, printUltraSecret)
-	print()
+	print("     _C1 _C2 _C3 _C4 _C5 _C6 _C7 _C8 _C9 C10 C11 C12 C13")
 	for i = 1, 13 do
 		str = i..". "
 		if i < 10 then str = str.." " end
@@ -160,10 +160,10 @@ local function clearNeighboringSecrets(index)
 	local row, column = ((math.floor(index/13) + 1)), ((index % 13) + 1)
 	
 	--Remove adjacent secret/super secret rooms on matrix.
-	if row > 1 and matrix[row-1][column] == Enums.SUPERSECRET_FALSE or matrix[row-1][column] == Enums.SECRET_FALSE then matrix[row-1][column] = Enums.NO_ROOM end
-	if row < 13 and matrix[row+1][column] == Enums.SUPERSECRET_FALSE or matrix[row+1][column] == Enums.SECRET_FALSE then matrix[row+1][column] = Enums.NO_ROOM end
-	if column > 1 and matrix[row][column-1] == Enums.SUPERSECRET_FALSE or matrix[row][column-1] == Enums.SECRET_FALSE then matrix[row][column-1] = Enums.NO_ROOM end
-	if column < 13 and matrix[row][column+1] == Enums.SUPERSECRET_FALSE or matrix[row][column+1] == Enums.SECRET_FALSE then matrix[row][column+1] = Enums.NO_ROOM end
+	if row > 1 and (matrix[row-1][column] == Enums.SUPERSECRET_FALSE or matrix[row-1][column] == Enums.SECRET_FALSE) then matrix[row-1][column] = Enums.NO_ROOM end
+	if row < 13 and (matrix[row+1][column] == Enums.SUPERSECRET_FALSE or matrix[row+1][column] == Enums.SECRET_FALSE) then matrix[row+1][column] = Enums.NO_ROOM end
+	if column > 1 and (matrix[row][column-1] == Enums.SUPERSECRET_FALSE or matrix[row][column-1] == Enums.SECRET_FALSE) then matrix[row][column-1] = Enums.NO_ROOM end
+	if column < 13 and (matrix[row][column+1] == Enums.SUPERSECRET_FALSE or matrix[row][column+1] == Enums.SECRET_FALSE) then matrix[row][column+1] = Enums.NO_ROOM end
 		
 	--Remove adjacent super secret rooms on map
 	for k, v in pairs(customSuperSecretListIDs) do
@@ -284,18 +284,17 @@ local function findPossibilities()
 						roomShape = roomData.Shape
 						--illegal top neighbors.
 						if roomType == RoomType.ROOM_BOSS or roomShape == RoomShape.ROOMSHAPE_IH or roomShape == RoomShape.ROOMSHAPE_IIH then
-							break
+							goto continue 
 						else
 							--more illegal top neighbors. We don't want to indicate to the player that we've found one though.
 							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
 								neighborList["Top"] = matrix[i-1][j]
-								
 								uniqueNeighbors = uniqueNeighbors + 1
-							end
 							
-							--supersecret rooms can't spawn adjacent special rooms.
-							if roomType ~= RoomType.ROOM_DEFAULT then
-								hasSpecialNeighbor = true
+								--supersecret rooms can't spawn adjacent special rooms.
+								if roomType ~= RoomType.ROOM_DEFAULT then
+									hasSpecialNeighbor = true
+								end
 							end
 						end
 					end
@@ -308,7 +307,7 @@ local function findPossibilities()
 						roomShape = roomData.Shape
 						--illegal left neighbors.
 						if roomType == RoomType.ROOM_BOSS or roomShape == RoomShape.ROOMSHAPE_IV or roomShape == RoomShape.ROOMSHAPE_IIV then
-							break
+							goto continue
 						else
 							--more illegal left neighbors. We don't want to indicate to the player that we've found one though.
 							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
@@ -318,11 +317,11 @@ local function findPossibilities()
 								if neighborList["Left"] ~= neighborList["Top"] then	
 									uniqueNeighbors = uniqueNeighbors + 1
 								end
-							end
-							
-							--supersecret rooms can't spawn adjacent special rooms.
-							if roomType ~= RoomType.ROOM_DEFAULT then
-								hasSpecialNeighbor = true
+								
+								--supersecret rooms can't spawn adjacent special rooms.
+								if roomType ~= RoomType.ROOM_DEFAULT then
+									hasSpecialNeighbor = true
+								end
 							end
 						end
 					end
@@ -335,7 +334,7 @@ local function findPossibilities()
 						roomShape = roomData.Shape
 						--illegal bottom neighbors.
 						if roomType == RoomType.ROOM_BOSS or roomShape == RoomShape.ROOMSHAPE_IH or roomShape == RoomShape.ROOMSHAPE_IIH then
-							break
+							goto continue
 						else
 							--more illegal bottom neighbors. We don't want to indicate to the player that we've found one though.
 							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
@@ -345,11 +344,11 @@ local function findPossibilities()
 								if neighborList["Bottom"] ~= neighborList["Top"] and neighborList["Bottom"] ~= neighborList["Left"]  then	
 									uniqueNeighbors = uniqueNeighbors + 1
 								end
-							end
-							
-							--supersecret rooms can't spawn adjacent special rooms.
-							if roomType ~= RoomType.ROOM_DEFAULT then
-								hasSpecialNeighbor = true
+								
+								--supersecret rooms can't spawn adjacent special rooms.
+								if roomType ~= RoomType.ROOM_DEFAULT then
+									hasSpecialNeighbor = true
+								end
 							end
 						end
 					end
@@ -362,7 +361,7 @@ local function findPossibilities()
 						roomShape = roomData.Shape
 						--illegal right neighbors
 						if roomType == RoomType.ROOM_BOSS or roomShape == RoomShape.ROOMSHAPE_IV or roomShape == RoomShape.ROOMSHAPE_IIV then
-							break
+							goto continue
 						else
 							--more illegal left neighbors. We don't want to indicate to the player that we've found one though.
 							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
@@ -372,11 +371,11 @@ local function findPossibilities()
 								if neighborList["Right"] ~= neighborList["Top"] and neighborList["Right"] ~= neighborList["Left"] and neighborList["Right"] ~= neighborList["Bottom"]  then	
 									uniqueNeighbors = uniqueNeighbors + 1
 								end
-							end
-							
-							--supersecret rooms can't spawn adjacent special rooms.
-							if roomType ~= RoomType.ROOM_DEFAULT then
-								hasSpecialNeighbor = true
+								
+								--supersecret rooms can't spawn adjacent special rooms.
+								if roomType ~= RoomType.ROOM_DEFAULT then
+									hasSpecialNeighbor = true
+								end
 							end
 						end
 					end
@@ -387,7 +386,8 @@ local function findPossibilities()
 				elseif uniqueNeighbors > 1 then
 					matrix[i][j] = Enums.SECRET_FALSE
 				end
-				
+			
+				::continue::
 			end
 		end
 	end
