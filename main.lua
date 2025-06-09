@@ -1141,7 +1141,7 @@ local function onCard(mod, card, player, flags)
 end
 
 --Check if isaac has vanilla objects that reveal secret locations.
-local function onPickupPassiveVision()
+local function checkCollectibles()
 	--player has blue map or spelunker's hat.
 	if (vanillaRevealSuperSecret == false or vanillaRevealSecret == false) and (Isaac.GetPlayer().HasCollectible(Isaac.GetPlayer(), CollectibleType.COLLECTIBLE_BLUE_MAP, true) or Isaac.GetPlayer().HasCollectible(Isaac.GetPlayer(), CollectibleType.COLLECTIBLE_SPELUNKER_HAT, true)) then 
 			vanillaRevealSuperSecret = true
@@ -1163,6 +1163,7 @@ end
 local function resetValues()
 	vanillaRevealSecret = false
 	vanillaRevealSuperSecret = false
+	hasLuna = false
 end
 
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, updateMap)
@@ -1170,5 +1171,5 @@ secretMod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, onEnterSecret)
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_LEVEL, findPossibilities)
 secretMod:AddCallback(ModCallbacks.MC_USE_CARD, onCard)
 secretMod:AddCallback(ModCallbacks.MC_PRE_USE_ITEM, onActive)
-secretMod:AddCallback(ModCallbacks.MC_EVALUATE_CACHE, onPickupPassiveVision)
+secretMod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, checkCollectibles)
 secretMod:AddCallback(ModCallbacks.MC_POST_GAME_STARTED, resetValues)
