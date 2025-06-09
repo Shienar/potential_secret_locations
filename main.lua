@@ -20,6 +20,7 @@ local superSecretFound = { }
 --This mod should avoid doing extra work if the player has items like blue map or spelunker's hat already.
 local vanillaRevealSecret = false
 local vanillaRevealSuperSecret = false
+local hasLuna = false
 
 local Enums = {
 	NO_ROOM = -1,
@@ -1149,6 +1150,12 @@ local function onPickupPassiveVision()
 			clearFakeSecrets(true)
 	elseif vanillaRevealSecret == false and Isaac.GetPlayer().HasCollectible(Isaac.GetPlayer(), CollectibleType.COLLECTIBLE_MIND, true) then
 		vanillaRevealSecret = true
+		clearFakeSecrets(false)
+	end
+	
+	--The player has picked up luna for the first time.
+	if hasLuna == false and Isaac.GetPlayer().HasCollectible(Isaac.GetPlayer(), CollectibleType.COLLECTIBLE_LUNA) then
+		hasLuna = true
 		clearFakeSecrets(false)
 	end
 end
