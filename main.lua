@@ -23,6 +23,7 @@ local vanillaRevealSuperSecret = false
 local hasLuna = false
 
 local Enums = {
+	--Room Type enums
 	NO_ROOM = -1,
 	SECRET_FALSE = 994,
 	SUPERSECRET_FALSE = 995,
@@ -30,6 +31,12 @@ local Enums = {
 	SECRET = 997,
 	SUPERSECRET = 998,
 	ULTRASECRET = 999,
+	
+	--Grid Type enums
+	PATH = 28,
+	OBSTACLE = 29,
+	EMPTY = 30,
+	DOOR = 31,
 }
 
 local function resetMatrix()
@@ -121,6 +128,33 @@ local function printMatrix(printSecretGuesses, printSuperGuesses, printUltraGues
 			end
 		end
 		if str.gsub(str, "%s+", "") ~= i.."." then print(str) end
+	end
+end
+
+--debugging function
+local function printGrid(height, width, grid)
+	if grid == nil then return end
+	print()
+	for i = 0, height - 1 do
+		local str = i..". "
+		if i < 10 then str = str.." " end
+		
+		for j = 0, width - 1 do
+			if grid[i] == nil then return end
+			
+			if grid[i][j] == Enums.EMPTY then
+				str = str.."_ "
+			elseif grid[i][j] == Enums.OBSTACLE then
+				str = str.."O "
+			elseif grid[i][j] == Enums.PATH then
+				str = str.."P "
+			elseif grid[i][j] == Enums.DOOR then
+				str = str.."D "
+			else
+				str = str.."? "
+			end
+		end
+		print(str)
 	end
 end
 
@@ -274,6 +308,7 @@ local function findPossibilities()
 			--Unused room location slot.
 			if matrix[i][j] == Enums.NO_ROOM then
 				local uniqueNeighbors = 0
+				local totalNeighbors = 0
 				local neighborList = {}
 				local hasSpecialNeighbor = false
 				
@@ -291,6 +326,7 @@ local function findPossibilities()
 							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
 								neighborList["Top"] = matrix[i-1][j]
 								uniqueNeighbors = uniqueNeighbors + 1
+								totalNeighbors = totalNeighbors+1
 							
 								--supersecret rooms can't spawn adjacent special rooms.
 								if roomType ~= RoomType.ROOM_DEFAULT then
@@ -313,11 +349,13 @@ local function findPossibilities()
 							--more illegal left neighbors. We don't want to indicate to the player that we've found one though.
 							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
 								neighborList["Left"] = matrix[i][j-1]
+								totalNeighbors = totalNeighbors+1
 								
 								--ensure uniqueness
 								if neighborList["Left"] ~= neighborList["Top"] then	
 									uniqueNeighbors = uniqueNeighbors + 1
 								end
+								
 								
 								--supersecret rooms can't spawn adjacent special rooms.
 								if roomType ~= RoomType.ROOM_DEFAULT then
@@ -340,6 +378,7 @@ local function findPossibilities()
 							--more illegal bottom neighbors. We don't want to indicate to the player that we've found one though.
 							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
 								neighborList["Bottom"] = matrix[i+1][j]
+								totalNeighbors = totalNeighbors+1
 								
 								--ensure uniqueness
 								if neighborList["Bottom"] ~= neighborList["Top"] and neighborList["Bottom"] ~= neighborList["Left"]  then	
@@ -367,6 +406,7 @@ local function findPossibilities()
 							--more illegal left neighbors. We don't want to indicate to the player that we've found one though.
 							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
 								neighborList["Right"] = matrix[i][j+1]
+								totalNeighbors = totalNeighbors+1
 								
 								--ensure uniqueness
 								if neighborList["Right"] ~= neighborList["Top"] and neighborList["Right"] ~= neighborList["Left"] and neighborList["Right"] ~= neighborList["Bottom"]  then	
@@ -383,8 +423,8 @@ local function findPossibilities()
 				end
 				
 				if uniqueNeighbors == 1 and hasSpecialNeighbor == false then
-					--This excludes L rooms
-					if #neighborList == 1 then
+					--This excludes L rooms. Quick hotfix, refactor later.
+					if totalNeighbors == 1 then
 						matrix[i][j] = Enums.SUPERSECRET_FALSE
 					end
 				elseif uniqueNeighbors > 1 then
@@ -414,6 +454,8 @@ local function updateMap()
 		return
 	end
 	
+	--new room callback happens before new level callback, but we don't 
+	--want to do anything if the level hasn't been loaded yet.
 	if matrix[1] == nil then
 		resetMatrix() 
 		return
@@ -423,445 +465,631 @@ local function updateMap()
 	local level = Game():GetLevel()
 	local room = level:GetCurrentRoom()
 	local index = level:GetCurrentRoomDesc().GridIndex
-	local row, column = (math.floor(index/13) + 1), (index%13 + 1)
+	local row, column = (math.floor(index/13) + 1), (index%13 + 1) --13x13 matrix for rooms
+	local height, width = room.GetGridHeight(room), room.GetGridWidth(room)
 	local shape = room.GetRoomShape(room)
 	
-	--Check for obstacles in front of door, update matrix if necessary.
-	for i = 0, room.GetGridSize(room) do
+	--1x1 room: 0-134 indexes. Height = 9, Width = 15
+	--1x2 (vertical) room: 0-239 indexes. Height = 16, Width = 15
+	--2x1 (horizontal) room: 0-251 indexes. Height = 9, Width = 28
+	--2x2 room: 0-447 indexes, Height = 16, Width = 28
+	
+	--Initialize blank grid of this room.
+	local grid = {}
+	for i = 0, (height - 1) do
+		grid[i] = { }
+		for j = 0, (width - 1) do
+			grid[i][j] = Enums.EMPTY
+		end
+	end
+	
+	--Add Obstacles and doors.
+	for i = 0, (room.GetGridSize(room)-1) do
 		local entity = room.GetGridEntity(room, i)
 		if entity ~= nil then
-			if entity.GetType(entity) ~= GridEntityType.GRID_NULL and
+			local row, column = math.floor(i/width), i%width --Sourced from the GridIndexes for this room. Different from the indexes assigned to each room.
+			if entity.GetType(entity) == GridEntityType.GRID_DOOR then
+				grid[row][column] = Enums.DOOR
+			elseif entity.GetType(entity) ~= GridEntityType.GRID_NULL and
 			   entity.GetType(entity) ~= GridEntityType.GRID_DECORATION and
-			   entity.GetType(entity) ~= GridEntityType.GRID_WALL and 
-			   entity.GetType(entity) ~= GridEntityType.GRID_SPIDERWEB and
-			   entity.GetType(entity) ~= GridEntityType.GRID_DOOR then
-					
-					if shape == RoomShape.ROOMSHAPE_1x1 or shape == RoomShape.ROOMSHAPE_IH or shape == RoomShape.ROOMSHAPE_IV then
-						--   1
-						-- 3 X 4
-						--   2
-						if entity.GetGridIndex(entity) == 22 then
-							--top (1) is blocked
-							--print("Top is blocked")
-							if row > 1 then 
-								matrix[row-1][column] = Enums.NO_ROOM 
-								removeRoom(index, -13)
-							end
-						elseif entity.GetGridIndex(entity) == 112 then
-							--bottom (2) is blocked
-							--print("Bottom is blocked")
-							if row < 13 then 
-								matrix[row+1][column] = Enums.NO_ROOM
-								removeRoom(index, 13)
-							end
-						elseif entity.GetGridIndex(entity) == 61 then
-							--left (3) is blocked
-							--print("Left is blocked")
-							if column > 1 then
-								matrix[row][column - 1] = Enums.NO_ROOM 
-								removeRoom(index, -1)
-							end
-						elseif entity.GetGridIndex(entity) == 73 then
-							--right (4) is blocked
-							--print("Right is blocked")
-							if column < 13 then 
-								matrix[row][column + 1] = Enums.NO_ROOM 
-								removeRoom(index, 1)
-							end
-						end
-					elseif shape == RoomShape.ROOMSHAPE_2x1 or shape == RoomShape.ROOMSHAPE_IIH then
-						--horizontal 2x1
-						--   3 4
-						-- 1 X X 2
-						--   5 6
-						
-						if entity.GetGridIndex(entity) == 113  then
-							--1 is blocked
-							--print("1 is blocked")
-							if column > 1 then
-								matrix[row][column - 1] = Enums.NO_ROOM 
-								removeRoom(index, -1)
-							end
-						elseif entity.GetGridIndex(entity) == 138 then
-							--2 is blocked
-							--print("2 is blocked")
-							if column < 12 then 
-								matrix[row][column + 2] = Enums.NO_ROOM 
-								removeRoom(index, 2)
-							end
-						elseif entity.GetGridIndex(entity) == 35 then
-							--3 is blocked
-							--print("3 is blocked")
-							if row > 1 then 
-								matrix[row-1][column] = Enums.NO_ROOM 
-								removeRoom(index, -13)
-							end
-						elseif entity.GetGridIndex(entity) == 48 then 
-							--4 is blocked
-							--print("4 is blocked")
-							if row > 1 and column < 13 then
-								matrix[row-1][column + 1] = Enums.NO_ROOM
-								removeRoom(index, -12)
-							end
-						elseif entity.GetGridIndex(entity) == 203 then 
-							--5 is blocked
-							--print("5 is blocked")
-							if row < 13 then
-								matrix[row+1][column] = Enums.NO_ROOM 
-								removeRoom(index, 13)
-							end
-						elseif entity.GetGridIndex(entity) == 216 then 
-							--6 is blocked
-							--print("6 is blocked")
-							if row < 13 and column < 13 then
-								matrix[row+1][column + 1] = Enums.NO_ROOM
-								removeRoom(index, 14)
-							end
-						end
-					elseif shape == RoomShape.ROOMSHAPE_1x2 or shape == RoomShape.ROOMSHAPE_IIV then
-						--vertical 1x2
-						--    1
-						-- 	3 X 5
-						--  4 X 6
-						--    2
-						
-						if entity.GetGridIndex(entity) == 22  then 
-							--1 is blocked
-							--print("1 is blocked")
-							if row > 1 then
-								matrix[row - 1][column] = Enums.NO_ROOM
-								removeRoom(index, -13)
-							end
-						elseif entity.GetGridIndex(entity) == 217 then
-							--2 is blocked
-							--print("2 is blocked")
-							if row < 12 then
-								matrix[row + 2][column] = Enums.NO_ROOM
-								removeRoom(index, 26)
-							end
-						elseif entity.GetGridIndex(entity) == 61 then 
-							--3 is blocked
-							--print("3 is blocked")
-							if column > 1 then 
-								matrix[row][column-1] = Enums.NO_ROOM 
-								removeRoom(index, -1)
-							end
-						elseif entity.GetGridIndex(entity) == 166 then 
-							--4 is blocked
-							--print("4 is blocked")
-							if column > 1 and row < 13 then
-								matrix[row+1][column-1] = Enums.NO_ROOM 
-								removeRoom(index, 12)
-							end
-						elseif entity.GetGridIndex(entity) == 73 then 
-							--5 is blocked
-							--print("5 is blocked")
-							if column < 13 then 
-								matrix[row][column+1] = Enums.NO_ROOM 
-								removeRoom(index, 1)
-							end
-						elseif entity.GetGridIndex(entity) == 178 then 
-							--6 is blocked
-							--print("6 is blocked")
-							if column < 13 and row < 13 then
-								matrix[row+1][column+1] = Enums.NO_ROOM 
-								removeRoom(index, 14)
-							end
-						end
-					elseif shape == RoomShape.ROOMSHAPE_2x2 then
-						--   3 4
-						-- 2 X X 5
-						-- 1 X X 6
-						--   7 8
-						
-						if entity.GetGridIndex(entity) == 309  then
-							--1 is blocked
-							--print("1 is blocked")
-							if row < 13 and column > 1 then 
-								matrix[row+1][column-1] = Enums.NO_ROOM 
-								removeRoom(index, 12)
-							end
-						elseif entity.GetGridIndex(entity) == 113 then
-							--2 is blocked
-							--print("2 is blocked")
-							if column > 1 then 
-								matrix[row][column-1] = Enums.NO_ROOM 
-								removeRoom(index, -1)
-							end
-						elseif entity.GetGridIndex(entity) == 35 then
-							--3 is blocked
-							--print("3 is blocked")
-							if row > 1 then 
-								matrix[row - 1][column] = Enums.NO_ROOM 
-								removeRoom(index, -13)
-							end
-						elseif entity.GetGridIndex(entity) == 48 then
-							--4 is blocked
-							--print("4 is blocked")
-							if row > 1 and column < 13 then 
-								matrix[row - 1][column+1] = Enums.NO_ROOM 
-								removeRoom(index, -12)
-							end
-						elseif entity.GetGridIndex(entity) == 138 then 
-							--5 is blocked
-							--print("5 is blocked")
-							if column < 12 then 
-								matrix[row][column+2] = Enums.NO_ROOM 
-								removeRoom(index, 2)
-							end
-						elseif entity.GetGridIndex(entity) == 334 then
-							--6 is blocked
-							--print("6 is blocked")
-							if row < 13 and column < 12 then 
-								matrix[row+1][column+2] = Enums.NO_ROOM 
-								removeRoom(index, 15)
-							end
-						elseif entity.GetGridIndex(entity) == 399 then 
-							--7 is blocked
-							--print("7 is blocked")
-							if row < 12 then 
-								matrix[row+2][column] = Enums.NO_ROOM
-								removeRoom(index, 26)
-							end
-						elseif entity.GetGridIndex(entity) == 412 then
-							--8 is blocked
-							--print("8 is blocked")
-							if row < 12 and column < 13 then 
-								matrix[row+2][column+1] = Enums.NO_ROOM 
-								removeRoom(index, 27)
-							end
-						end
-					elseif shape == RoomShape.ROOMSHAPE_LTR then
-						--top-right square missing
-						--    3
-						--	2 X 4
-						--	1 X X 5
-						--	  6 7
-						
-						
-						if entity.GetGridIndex(entity) == 309  then
-							--1 is blocked
-							--print("1 is blocked")
-							if row < 13 and column > 1 then 
-								matrix[row+1][column-1] = Enums.NO_ROOM 
-								removeRoom(index, 12)
-							end
-						elseif entity.GetGridIndex(entity) == 113 then 
-							--2 is blocked
-							--print("2 is blocked")
-							if column > 1 then 
-								matrix[row][column-1] = Enums.NO_ROOM
-								removeRoom(index, -1)
-							end
-						elseif entity.GetGridIndex(entity) == 35 then 
-							--3 is blocked
-							--print("3 is blocked")
-							if row > 1 then 
-								matrix[row-1][column] = Enums.NO_ROOM 
-								removeRoom(index, -13)
-							end
-						elseif entity.GetGridIndex(entity) == 125 or entity.GetGridIndex(entity) == 244 then
-							--4 is blocked
-							--print("4 is blocked")
-							if column < 13 then 
-								matrix[row][column+1] = Enums.NO_ROOM
-								removeRoom(index, 1)
-							end
-						elseif entity.GetGridIndex(entity) == 334 then  
-							--5 is blocked
-							--print("5 is blocked")
-							if column < 12 and row < 13 then 
-								matrix[row+1][column+2] = Enums.NO_ROOM 
-								removeRoom(index, 15)
-							end
-						elseif entity.GetGridIndex(entity) == 399 then 
-							--6 is blocked
-							--print("6 is blocked")
-							if row < 12 then 
-								matrix[row+2][column] = Enums.NO_ROOM
-								removeRoom(index, 26)
-							end
-						elseif entity.GetGridIndex(entity) == 412 then  
-							--7 is blocked
-							--print("7 is blocked")
-							if row < 12 and column < 13 then 
-								matrix[row+2][column+1] = Enums.NO_ROOM
-								removeRoom(index, 27)
-							end
-						end
-					elseif shape == RoomShape.ROOMSHAPE_LTL then
-						--top-left square missing
-						--		3
-						--	  2 X 4
-						--	1 X X 5
-						--	  6 7
-						
-						
-						if entity.GetGridIndex(entity) == 309  then
-							--1 is blocked
-							--print("1 is blocked")
-							if row < 13 and column > 1 then 
-								matrix[row+1][column-1] = Enums.NO_ROOM 
-								removeRoom(index, 12)
-							end
-						elseif entity.GetGridIndex(entity) == 126 or entity.GetGridIndex(entity) == 231 then
-							--2 is blocked
-							--print("2 is blocked")
-							matrix[row][column] = Enums.NO_ROOM
-							removeRoom(index, 0)
-						elseif entity.GetGridIndex(entity) == 48 then 
-							--3 is blocked
-							--print("3 is blocked")
-							if row > 1 and column < 13 then 
-								matrix[row-1][column+1] = Enums.NO_ROOM 
-								removeRoom(index, -12)
-							end
-						elseif entity.GetGridIndex(entity) == 138 then
-							--4 is blocked
-							--print("4 is blocked")
-							if column < 12 then 
-								matrix[row][column+2] = Enums.NO_ROOM
-								removeRoom(index, 2)
-							end
-						elseif entity.GetGridIndex(entity) == 334 then 
-							--5 is blocked
-							--print("5 is blocked")
-							if row < 13 and column < 12 then 
-								matrix[row+1][column+2] = Enums.NO_ROOM 
-								removeRoom(index, 15)
-							end
-						elseif entity.GetGridIndex(entity) == 399 then
-							--6 is blocked
-							--print("6 is blocked")
-							if row < 12 then 
-								matrix[row+2][column] = Enums.NO_ROOM 
-								removeRoom(index, 26)
-							end
-						elseif entity.GetGridIndex(entity) == 412 then 
-							--7 is blocked
-							--print("7 is blocked")
-							if row < 12 and column < 13 then 
-								matrix[row+2][column+1] = Enums.NO_ROOM 
-								removeRoom(index, 27)
-							end
-						end
-					elseif shape == RoomShape.ROOMSHAPE_LBR then
-						--bottom-right square missing
-						--    3 4
-						--	2 X X 5
-						--	1 X 6
-						--    7
-						
-						if entity.GetGridIndex(entity) == 309  then
-							--1 is blocked
-							--print("1 is blocked")
-							if row < 13 and column > 1 then
-								matrix[row+1][column-1] = Enums.NO_ROOM 
-								removeRoom(index, 12)
-							end
-						elseif entity.GetGridIndex(entity) == 113 then
-							--2 is blocked
-							--print("2 is blocked")
-							if column > 1 then 
-								matrix[row][column] = Enums.NO_ROOM
-								removeRoom(index, -1)
-							end
-						elseif entity.GetGridIndex(entity) == 35 then 
-							--3 is blocked
-							--print("3 is blocked")
-							if row > 1 then
-								matrix[row - 1][column] = Enums.NO_ROOM 
-								removeRoom(index, -13)
-							end
-						elseif entity.GetGridIndex(entity) == 48 then
-							--4 is blocked
-							--print("4 is blocked")
-							if row > 1 and column < 13 then 
-								matrix[row-1][column+1] = Enums.NO_ROOM
-								removeRoom(index, -12)
-							end
-						elseif entity.GetGridIndex(entity) == 138 then
-							--5 is blocked
-							--print("5 is blocked")
-							if column < 12 then 
-								matrix[row][column+2] = Enums.NO_ROOM
-								removeRoom(index, 2)
-							end
-						elseif entity.GetGridIndex(entity) == 321 or entity.GetGridIndex(entity) == 216 then 
-							--6 is blocked
-							--print("6 is blocked")
-							if row < 13 and column < 13 then 
-								matrix[row+1][column+1] = Enums.NO_ROOM 
-								removeRoom(index, 14)
-							end
-						elseif entity.GetGridIndex(entity) == 399 then
-							--7 is blocked
-							--print("7 is blocked")
-							if row < 12 then 
-								matrix[row+2][column] = Enums.NO_ROOM
-								removeRoom(index, 26)
-							end
-						end
-					elseif shape == RoomShape.ROOMSHAPE_LBL then
-						--bottom-left square missing
-						--    3 4
-						--	2 X X 5
-						--	  1 X 6
-						--    	7
-						if entity.GetGridIndex(entity) == 203 or entity.GetGridIndex(entity) == 322 then
-							--1 is blocked
-							--print("1 is blocked")
-							if row < 13 then 
-								matrix[row+1][column] = Enums.NO_ROOM 
-								removeRoom(index, 13)
-							end
-						elseif entity.GetGridIndex(entity) == 113 then 
-							--2 is blocked
-							--print("2 is blocked")
-							if column > 1 then 
-								matrix[row][column-1] = Enums.NO_ROOM 
-								removeRoom(index, -1)
-							end
-						elseif entity.GetGridIndex(entity) == 35 then
-							--3 is blocked
-							--print("3 is blocked")
-							if row > 1 then 
-								matrix[row-1][column]= Enums.NO_ROOM
-								removeRoom(index, -13)
-							end
-						elseif entity.GetGridIndex(entity) == 48 then
-							--4 is blocked
-							--print("4 is blocked")
-							if row > 1 and column < 13 then 
-								matrix[row-1][column + 1] = Enums.NO_ROOM 
-								removeRoom(index, -12)
-							end
-						elseif entity.GetGridIndex(entity) == 138 then
-							--5 is blocked
-							--print("5 is blocked")
-							if column < 12 then 
-								matrix[row][column+2] = Enums.NO_ROOM
-								removeRoom(index, 2)
-							end
-						elseif entity.GetGridIndex(entity) == 334 then
-							--6 is blocked
-							--print("6 is blocked")
-							if row < 13 and column < 12 then 
-								matrix[row+1][column+2] = Enums.NO_ROOM
-								removeRoom(index, 15)
-							end
-						elseif entity.GetGridIndex(entity) == 412 then
-							--7 is blocked
-							--print("7 is blocked")
-							if row < 12 and column < 13 then 
-								matrix[row+2][column+1] = Enums.NO_ROOM
-								removeRoom(index, 27)
-							end
-						end
-					end
+			   entity.GetType(entity) ~= GridEntityType.GRID_SPIDERWEB then
+
+				grid[row][column] = Enums.OBSTACLE
 			end
 		end
 	end
+	
+	--Add fires and moveable TNT because they are special.
+	for i, entity in ipairs(Isaac.GetRoomEntities()) do
+		if entity.Type == EntityType.ENTITY_FIREPLACE or
+		   entity.Type == EntityType.ENTITY_MOVABLE_TNT then
+			local row, column = math.floor(entity.SpawnGridIndex/width), (entity.SpawnGridIndex)%width
+			grid[row][column] = Enums.OBSTACLE
+		end
+	end
+	
+	--Create tables to manage search.
+	local coordList = {}
+	
+	--Add starting point. (Find a point near a door)
+	for i = 0, height-1 do
+		for j = 0, width - 1 do
+			if grid[i][j] == Enums.DOOR then
+				if i == 0 then
+					grid[i+1][j] = Enums.PATH
+					table.insert(coordList,Vector(i+1, j))
+				elseif i == (height-1) then
+					grid[i-1][j] = Enums.PATH
+					table.insert(coordList,Vector(i-1, j))
+				elseif j == 0 then
+					grid[i][j+1] = Enums.PATH
+					table.insert(coordList,Vector(i, j+1))
+				elseif j == (width-1) then
+					grid[i][j-1] = Enums.PATH
+					table.insert(coordList,Vector(i, j-1))
+				end
+				goto exitLoop
+			end
+		end
+	end
+	
+	::exitLoop::
+	
+	--BFS, find visitable spots
+	while coordList[1] ~= nil do
+		local v = table.remove(coordList, 1)
+		local i, j = v.X, v.Y
+		
+		--Add neighbors to end of coordList if possible.
+		if grid[i-1] ~= nil and grid[i-1][j] == Enums.EMPTY then
+			--Above
+			grid[i-1][j] = Enums.PATH
+			table.insert(coordList, Vector(i-1, j))
+		end
+		if grid[i+1] ~= nil and grid[i+1][j] == Enums.EMPTY then
+			--Below
+			grid[i+1][j] = Enums.PATH
+			table.insert(coordList, Vector(i+1, j))
+		end
+		if grid[i] ~= nil and grid[i][j-1] == Enums.EMPTY then
+			--Left
+			grid[i][j-1] = Enums.PATH
+			table.insert(coordList, Vector(i, j-1))
+		end
+		if grid[i] ~= nil and grid[i][j+1] == Enums.EMPTY then
+			--Right
+			grid[i][j+1] = Enums.PATH
+			table.insert(coordList, Vector(i, j+1))
+		end
+	end
+	
+	--debugging
+	--printGrid(height, width, grid)	
+	
+	--Check if a path is reachable, update matrix if necessary.
+	--gridindex of X = grid[floor(X/width][X%width]
+	if shape == RoomShape.ROOMSHAPE_1x1 or shape == RoomShape.ROOMSHAPE_IH or shape == RoomShape.ROOMSHAPE_IV then
+		--[[
+		--   1
+		-- 3 X 4
+		--   2
+		-- 1 = grid index 22
+		-- 2 = grid index 112
+		-- 3 = grid index 61
+		-- 4 = grind index 73]]
+		
+		if grid[1][7] ~= Enums.PATH then
+			--top (1) is blocked
+			--print("Top is blocked")
+			if row > 1 then 
+				matrix[row-1][column] = Enums.NO_ROOM 
+				removeRoom(index, -13)
+			end
+		end
+		if grid[7][7] ~= Enums.PATH then
+			--bottom (2) is blocked
+			--print("Bottom is blocked")
+			if row < 13 then 
+				matrix[row+1][column] = Enums.NO_ROOM
+				removeRoom(index, 13)
+			end
+		end
+		if grid[4][1] ~= Enums.PATH then
+			--left (3) is blocked
+			--print("Left is blocked")
+			if column > 1 then
+				matrix[row][column - 1] = Enums.NO_ROOM 
+				removeRoom(index, -1)
+			end
+		end
+		if grid[4][13] ~= Enums.PATH then
+			--right (4) is blocked
+			--print("Right is blocked")
+			if column < 13 then 
+				matrix[row][column + 1] = Enums.NO_ROOM 
+				removeRoom(index, 1)
+			end
+		end
+	elseif shape == RoomShape.ROOMSHAPE_2x1 or shape == RoomShape.ROOMSHAPE_IIH then
+		--[[horizontal 2x1
+		--   3 4
+		-- 1 X X 2
+		--   5 6
+		-- 1 = grid index 113
+		-- 2 = grid index 138
+		-- 3 = grid index 35
+		-- 4 = grid index 48
+		-- 5 = grid index 203
+		-- 6 = grid index 216]]
+		
+		if grid[4][1] ~= Enums.PATH  then
+			--1 is blocked
+			--print("1 is blocked")
+			if column > 1 then
+				matrix[row][column - 1] = Enums.NO_ROOM 
+				removeRoom(index, -1)
+			end
+		end
+		if grid[4][26] ~= Enums.PATH then
+			--2 is blocked
+			--print("2 is blocked")
+			if column < 12 then 
+				matrix[row][column + 2] = Enums.NO_ROOM 
+				removeRoom(index, 2)
+			end
+		end
+		if grid[1][7] ~= Enums.PATH then
+			--3 is blocked
+			--print("3 is blocked")
+			if row > 1 then 
+				matrix[row-1][column] = Enums.NO_ROOM 
+				removeRoom(index, -13)
+			end
+		end
+		if grid[1][20] ~= Enums.PATH then 
+			--4 is blocked
+			--print("4 is blocked")
+			if row > 1 and column < 13 then
+				matrix[row-1][column + 1] = Enums.NO_ROOM
+				removeRoom(index, -12)
+			end
+		end
+		if grid[7][7] ~= Enums.PATH then 
+			--5 is blocked
+			--print("5 is blocked")
+			if row < 13 then
+				matrix[row+1][column] = Enums.NO_ROOM 
+				removeRoom(index, 13)
+			end
+		end
+		if grid[7][20] ~= Enums.PATH then 
+			--6 is blocked
+			--print("6 is blocked")
+			if row < 13 and column < 13 then
+				matrix[row+1][column + 1] = Enums.NO_ROOM
+				removeRoom(index, 14)
+			end
+		end
+	elseif shape == RoomShape.ROOMSHAPE_1x2 or shape == RoomShape.ROOMSHAPE_IIV then
+		--[[vertical 1x2
+		--    1
+		-- 	3 X 5
+		--  4 X 6
+		--    2
+		-- 1 = grid index 22
+		-- 2 = grid index 217
+		-- 3 = grid index 61
+		-- 4 = grid index 166
+		-- 5 = grid index 73
+		-- 6 = grid index 178]]
+		
+		if grid[1][7] ~= Enums.PATH  then 
+			--1 is blocked
+			--print("1 is blocked")
+			if row > 1 then
+				matrix[row - 1][column] = Enums.NO_ROOM
+				removeRoom(index, -13)
+			end
+		end
+		if grid[14][7] ~= Enums.PATH then
+			--2 is blocked
+			--print("2 is blocked")
+			if row < 12 then
+				matrix[row + 2][column] = Enums.NO_ROOM
+				removeRoom(index, 26)
+			end
+		end
+		if grid[4][1] ~= Enums.PATH then 
+			--3 is blocked
+			--print("3 is blocked")
+			if column > 1 then 
+				matrix[row][column-1] = Enums.NO_ROOM 
+				removeRoom(index, -1)
+			end
+		end
+		if grid[11][1] ~= Enums.PATH then 
+			--4 is blocked
+			--print("4 is blocked")
+			if column > 1 and row < 13 then
+				matrix[row+1][column-1] = Enums.NO_ROOM 
+				removeRoom(index, 12)
+			end
+		end
+		if grid[4][13] ~= Enums.PATH then 
+			--5 is blocked
+			--print("5 is blocked")
+			if column < 13 then 
+				matrix[row][column+1] = Enums.NO_ROOM 
+				removeRoom(index, 1)
+			end
+		end
+		if grid[11][13] ~= Enums.PATH then 
+			--6 is blocked
+			--print("6 is blocked")
+			if column < 13 and row < 13 then
+				matrix[row+1][column+1] = Enums.NO_ROOM 
+				removeRoom(index, 14)
+			end
+		end
+	elseif shape == RoomShape.ROOMSHAPE_2x2 then
+		--[[
+		--   3 4
+		-- 2 X X 5
+		-- 1 X X 6
+		--   7 8
+		-- 1 = grid index 309
+		-- 2 = grid index 113
+		-- 3 = grid index 35
+		-- 4 = grid index 48
+		-- 5 = grid index 138
+		-- 6 = grid index 334
+		-- 7 = grid index 399
+		-- 8 = grid index 412
+		]]
+		
+		if grid[11][1] ~= Enums.PATH  then
+			--1 is blocked
+			--print("1 is blocked")
+			if row < 13 and column > 1 then 
+				matrix[row+1][column-1] = Enums.NO_ROOM 
+				removeRoom(index, 12)
+			end
+		end
+		if grid[4][1] ~= Enums.PATH then
+			--2 is blocked
+			--print("2 is blocked")
+			if column > 1 then 
+				matrix[row][column-1] = Enums.NO_ROOM 
+				removeRoom(index, -1)
+			end
+		end
+		if grid[1][7] ~= Enums.PATH then
+			--3 is blocked
+			--print("3 is blocked")
+			if row > 1 then 
+				matrix[row - 1][column] = Enums.NO_ROOM 
+				removeRoom(index, -13)
+			end
+		end
+		if grid[1][20] ~= Enums.PATH then
+			--4 is blocked
+			--print("4 is blocked")
+			if row > 1 and column < 13 then 
+				matrix[row - 1][column+1] = Enums.NO_ROOM 
+				removeRoom(index, -12)
+			end
+		end
+		if grid[4][26] ~= Enums.PATH then 
+			--5 is blocked
+			--print("5 is blocked")
+			if column < 12 then 
+				matrix[row][column+2] = Enums.NO_ROOM 
+				removeRoom(index, 2)
+			end
+		end
+		if grid[11][26] ~= Enums.PATH then
+			--6 is blocked
+			--print("6 is blocked")
+			if row < 13 and column < 12 then 
+				matrix[row+1][column+2] = Enums.NO_ROOM 
+				removeRoom(index, 15)
+			end
+		end
+		if grid[14][7] ~= Enums.PATH then 
+			--7 is blocked
+			--print("7 is blocked")
+			if row < 12 then 
+				matrix[row+2][column] = Enums.NO_ROOM
+				removeRoom(index, 26)
+			end
+		end
+		if grid[14][20] ~= Enums.PATH then
+			--8 is blocked
+			--print("8 is blocked")
+			if row < 12 and column < 13 then 
+				matrix[row+2][column+1] = Enums.NO_ROOM 
+				removeRoom(index, 27)
+			end
+		end
+	elseif shape == RoomShape.ROOMSHAPE_LTR then
+		--[[top-right square missing
+		--    3
+		--	2 X 4
+		--	1 X X 5
+		--	  6 7
+		-- 1 = grid index 309
+		-- 2 = grid index 113
+		-- 3 = grid index 35
+		-- 4 = grid index 125 244
+		-- 5 = grid index 334
+		-- 6 = grid index 399
+		-- 7 = grid index 412]]
+		
+		if grid[11][1] ~= Enums.PATH  then
+			--1 is blocked
+			--print("1 is blocked")
+			if row < 13 and column > 1 then 
+				matrix[row+1][column-1] = Enums.NO_ROOM 
+				removeRoom(index, 12)
+			end
+		end
+		if grid[4][1] ~= Enums.PATH then 
+			--2 is blocked
+			--print("2 is blocked")
+			if column > 1 then 
+				matrix[row][column-1] = Enums.NO_ROOM
+				removeRoom(index, -1)
+			end
+		end
+		if grid[1][7] ~= Enums.PATH then 
+			--3 is blocked
+			--print("3 is blocked")
+			if row > 1 then 
+				matrix[row-1][column] = Enums.NO_ROOM 
+				removeRoom(index, -13)
+			end
+		end
+		if grid[4][13] ~= Enums.PATH or grid[8][20] ~= Enums.PATH then
+			--4 is blocked
+			--print("4 is blocked")
+			if column < 13 then 
+				matrix[row][column+1] = Enums.NO_ROOM
+				removeRoom(index, 1)
+			end
+		end
+		if grid[11][26] ~= Enums.PATH then  
+			--5 is blocked
+			--print("5 is blocked")
+			if column < 12 and row < 13 then 
+				matrix[row+1][column+2] = Enums.NO_ROOM 
+				removeRoom(index, 15)
+			end
+		end
+		if grid[14][7] ~= Enums.PATH then 
+			--6 is blocked
+			--print("6 is blocked")
+			if row < 12 then 
+				matrix[row+2][column] = Enums.NO_ROOM
+				removeRoom(index, 26)
+			end
+		end
+		if grid[14][20] ~= Enums.PATH then  
+			--7 is blocked
+			--print("7 is blocked")
+			if row < 12 and column < 13 then 
+				matrix[row+2][column+1] = Enums.NO_ROOM
+				removeRoom(index, 27)
+			end
+		end
+	elseif shape == RoomShape.ROOMSHAPE_LTL then
+		--[[top-left square missing
+		--		3
+		--	  2 X 4
+		--	1 X X 5
+		--	  6 7
+		-- 1 = grid index 309
+		-- 2 = grid index 126 231
+		-- 3 = grid index 48
+		-- 4 = grid index 138
+		-- 5 = grid index 334
+		-- 6 = grid index 399
+		-- 7 = grid index 412]]
+		
+		if grid[11][1] ~= Enums.PATH  then
+			--1 is blocked
+			--print("1 is blocked")
+			if row < 13 and column > 1 then 
+				matrix[row+1][column-1] = Enums.NO_ROOM 
+				removeRoom(index, 12)
+			end
+		end
+		if grid[4][14] ~= Enums.PATH or grid[8][7] ~= Enums.PATH then
+			--2 is blocked
+			--print("2 is blocked")
+			matrix[row][column] = Enums.NO_ROOM
+			removeRoom(index, 0)
+		end
+		if grid[1][20] ~= Enums.PATH then 
+			--3 is blocked
+			--print("3 is blocked")
+			if row > 1 and column < 13 then 
+				matrix[row-1][column+1] = Enums.NO_ROOM 
+				removeRoom(index, -12)
+			end
+		end
+		if grid[4][26] ~= Enums.PATH then
+			--4 is blocked
+			--print("4 is blocked")
+			if column < 12 then 
+				matrix[row][column+2] = Enums.NO_ROOM
+				removeRoom(index, 2)
+			end
+		end
+		if grid[11][26] ~= Enums.PATH then 
+			--5 is blocked
+			--print("5 is blocked")
+			if row < 13 and column < 12 then 
+				matrix[row+1][column+2] = Enums.NO_ROOM 
+				removeRoom(index, 15)
+			end
+		end
+		if grid[14][7] ~= Enums.PATH then
+			--6 is blocked
+			--print("6 is blocked")
+			if row < 12 then 
+				matrix[row+2][column] = Enums.NO_ROOM 
+				removeRoom(index, 26)
+			end
+		end
+		if grid[14][20] ~= Enums.PATH then 
+			--7 is blocked
+			--print("7 is blocked")
+			if row < 12 and column < 13 then 
+				matrix[row+2][column+1] = Enums.NO_ROOM 
+				removeRoom(index, 27)
+			end
+		end
+	elseif shape == RoomShape.ROOMSHAPE_LBR then
+		--[[bottom-right square missing
+		--    3 4
+		--	2 X X 5
+		--	1 X 6
+		--    7
+		-- 1 = grid index 309
+		-- 2 = grid index 113
+		-- 3 = grid index 35
+		-- 4 = grid index 48
+		-- 5 = grid index 138
+		-- 6 = grid index 321 216
+		-- 7 = grid index 399]]
+		
+		if grid[11][1] ~= Enums.PATH  then
+			--1 is blocked
+			--print("1 is blocked")
+			if row < 13 and column > 1 then
+				matrix[row+1][column-1] = Enums.NO_ROOM 
+				removeRoom(index, 12)
+			end
+		end
+		if grid[4][1] ~= Enums.PATH then
+			--2 is blocked
+			--print("2 is blocked")
+			if column > 1 then 
+				matrix[row][column] = Enums.NO_ROOM
+				removeRoom(index, -1)
+			end
+		end
+		if grid[1][7] ~= Enums.PATH then 
+			--3 is blocked
+			--print("3 is blocked")
+			if row > 1 then
+				matrix[row - 1][column] = Enums.NO_ROOM 
+				removeRoom(index, -13)
+			end
+		end
+		if grid[1][20] ~= Enums.PATH then
+			--4 is blocked
+			--print("4 is blocked")
+			if row > 1 and column < 13 then 
+				matrix[row-1][column+1] = Enums.NO_ROOM
+				removeRoom(index, -12)
+			end
+		end
+		if grid[4][26] ~= Enums.PATH then
+			--5 is blocked
+			--print("5 is blocked")
+			if column < 12 then 
+				matrix[row][column+2] = Enums.NO_ROOM
+				removeRoom(index, 2)
+			end
+		end
+		if grid[11][13] ~= Enums.PATH or grid[7][20] ~= Enums.PATH then 
+			--6 is blocked
+			--print("6 is blocked")
+			if row < 13 and column < 13 then 
+				matrix[row+1][column+1] = Enums.NO_ROOM 
+				removeRoom(index, 14)
+			end
+		end
+		if grid[14][7] ~= Enums.PATH then
+			--7 is blocked
+			--print("7 is blocked")
+			if row < 12 then 
+				matrix[row+2][column] = Enums.NO_ROOM
+				removeRoom(index, 26)
+			end
+		end
+	elseif shape == RoomShape.ROOMSHAPE_LBL then
+		--[[bottom-left square missing
+		--    3 4
+		--	2 X X 5
+		--	  1 X 6
+		--    	7
+		-- 1 = grid index 203 322
+		-- 2 = grid index 113
+		-- 3 = grid index 35
+		-- 4 = grid index 48
+		-- 5 = grid index 138
+		-- 6 = grid index 334
+		-- 7 = grid index 412]]
+		
+		if grid[7][7] ~= Enums.PATH or grid[11][14] ~= Enums.PATH then
+			--1 is blocked
+			--print("1 is blocked")
+			if row < 13 then 
+				matrix[row+1][column] = Enums.NO_ROOM 
+				removeRoom(index, 13)
+			end
+		end
+		if grid[4][1] ~= Enums.PATH then 
+			--2 is blocked
+			--print("2 is blocked")
+			if column > 1 then 
+				matrix[row][column-1] = Enums.NO_ROOM 
+				removeRoom(index, -1)
+			end
+		end
+		if grid[1][7] ~= Enums.PATH then
+			--3 is blocked
+			--print("3 is blocked")
+			if row > 1 then 
+				matrix[row-1][column]= Enums.NO_ROOM
+				removeRoom(index, -13)
+			end
+		end
+		if grid[1][20] ~= Enums.PATH then
+			--4 is blocked
+			--print("4 is blocked")
+			if row > 1 and column < 13 then 
+				matrix[row-1][column + 1] = Enums.NO_ROOM 
+				removeRoom(index, -12)
+			end
+		end
+		if grid[4][26] ~= Enums.PATH then
+			--5 is blocked
+			--print("5 is blocked")
+			if column < 12 then 
+				matrix[row][column+2] = Enums.NO_ROOM
+				removeRoom(index, 2)
+			end
+		end
+		if grid[11][26] ~= Enums.PATH then
+			--6 is blocked
+			--print("6 is blocked")
+			if row < 13 and column < 12 then 
+				matrix[row+1][column+2] = Enums.NO_ROOM
+				removeRoom(index, 15)
+			end
+		end
+		if grid[14][20] ~= Enums.PATH then
+			--7 is blocked
+			--print("7 is blocked")
+			if row < 12 and column < 13 then 
+				matrix[row+2][column+1] = Enums.NO_ROOM
+				removeRoom(index, 27)
+			end
+		end
+	end	
 	
 	--Update map with secret locations.
 	if shape == RoomShape.ROOMSHAPE_1x1 or shape == RoomShape.ROOMSHAPE_IH or shape == RoomShape.ROOMSHAPE_IV then
@@ -1076,7 +1304,7 @@ local function updateMap()
 
 	
 	--debugging
-	--printMatrix(true, true, true, true, true, true)
+	printMatrix(true, true, true, true, true, true)
 end
 
 --Remove some potential locations from map when you enter a real location.
