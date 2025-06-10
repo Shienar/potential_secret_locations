@@ -383,7 +383,10 @@ local function findPossibilities()
 				end
 				
 				if uniqueNeighbors == 1 and hasSpecialNeighbor == false then
-					matrix[i][j] = Enums.SUPERSECRET_FALSE 
+					--This excludes L rooms
+					if #neighborList == 1 then
+						matrix[i][j] = Enums.SUPERSECRET_FALSE
+					end
 				elseif uniqueNeighbors > 1 then
 					matrix[i][j] = Enums.SECRET_FALSE
 				end
@@ -404,6 +407,12 @@ local function updateMap()
 	
 	--Don't do anything if the player has items that make the mod irrelevant.
 	if vanillaRevealSecret and vanillaRevealSuperSecret then return end
+	
+	
+	--Don't do anything in crawlspaces.
+	if Game().GetRoom(Game()).GetType(Game().GetRoom(Game())) == RoomType.ROOM_DUNGEON then
+		return
+	end
 	
 	if matrix[1] == nil then
 		resetMatrix() 
@@ -1143,14 +1152,14 @@ end
 --Check if isaac has vanilla objects that reveal secret locations.
 local function checkCollectibles()
 	--player has blue map or spelunker's hat.
-	if (vanillaRevealSuperSecret == false or vanillaRevealSecret == false) and (Isaac.GetPlayer().HasCollectible(Isaac.GetPlayer(), CollectibleType.COLLECTIBLE_BLUE_MAP, true) or Isaac.GetPlayer().HasCollectible(Isaac.GetPlayer(), CollectibleType.COLLECTIBLE_SPELUNKER_HAT, true)) then 
+	if (vanillaRevealSuperSecret == false or vanillaRevealSecret == false) and (Isaac.GetPlayer().HasCollectible(Isaac.GetPlayer(), CollectibleType.COLLECTIBLE_BLUE_MAP, true) or Isaac.GetPlayer().HasCollectible(Isaac.GetPlayer(), CollectibleType.COLLECTIBLE_SPELUNKER_HAT, true) or Isaac.GetPlayer().HasCollectible(Isaac.GetPlayer(), CollectibleType.COLLECTIBLE_MIND, true)) then 
 			vanillaRevealSuperSecret = true
 			vanillaRevealSecret = true
 			clearFakeSecrets(false)
 			clearFakeSecrets(true)
-	elseif vanillaRevealSecret == false and Isaac.GetPlayer().HasCollectible(Isaac.GetPlayer(), CollectibleType.COLLECTIBLE_MIND, true) then
+	--[[elseif vanillaRevealSecret == false and collectible then
 		vanillaRevealSecret = true
-		clearFakeSecrets(false)
+		clearFakeSecrets(false)]]
 	end
 	
 	--The player has picked up luna for the first time.
