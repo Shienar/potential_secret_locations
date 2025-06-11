@@ -62,22 +62,16 @@ local function searchForMapAdditions(row, column, index, row_offset, column_offs
 		if matrix[row+row_offset][column+column_offset] == Enums.SECRET_FALSE or matrix[row+row_offset][column+column_offset] == Enums.SECRET then 
 			if vanillaRevealSecret == false then
 				--secret
-				if notContainsVal(customSecretListIDs, (index+index_offset)) then
+				if notContainsVal(customSecretListIDs, (index+index_offset)) and notContainsVal(secretFound, (index+index_offset)) then
 					customSecretListIDs[#customSecretListIDs + 1] = index+index_offset
-				end
-				--Prevents overlapping icons with real secret room.
-				if notContainsVal(secretFound, (index+index_offset)) then
 					MinimapAPI:AddRoom{ID=(index+index_offset),Position=Vector(column - 1 + column_offset, row - 1 + row_offset),Shape=RoomShape.ROOMSHAPE_1x1,PermanentIcons={"SecretRoom"},Type=RoomType.ROOM_SECRET,DisplayFlags=5}
 				end
 			end
 		elseif matrix[row+row_offset][column+column_offset] == Enums.SUPERSECRET_FALSE or matrix[row+row_offset][column+column_offset] == Enums.SUPERSECRET then
 			if vanillaRevealSuperSecret == false then
 				--super secret
-				if notContainsVal(customSuperSecretListIDs, (index+index_offset)) then
+				if notContainsVal(customSuperSecretListIDs, (index+index_offset)) and notContainsVal(superSecretFound, (index+index_offset)) then
 					customSuperSecretListIDs[#customSuperSecretListIDs + 1] = index+index_offset
-				end
-				--Prevents overlapping icons with real secret room.
-				if notContainsVal(superSecretFound, (index+index_offset)) then
 					MinimapAPI:AddRoom{ID=(index+index_offset),Position=Vector(column - 1 + column_offset, row - 1 + row_offset),Shape=RoomShape.ROOMSHAPE_1x1,PermanentIcons={"SuperSecretRoom"},Type=RoomType.ROOM_SUPERSECRET,DisplayFlags=5}
 				end
 			end
@@ -984,9 +978,18 @@ local function updateMap()
 	end
 	
 	--Add fires and moveable TNT because they are special.
+	--Also include check for grimaces here.
 	for i, entity in ipairs(Isaac.GetRoomEntities()) do
 		if entity.Type == EntityType.ENTITY_FIREPLACE or
-		   entity.Type == EntityType.ENTITY_MOVABLE_TNT then
+		   entity.Type == EntityType.ENTITY_MOVABLE_TNT or
+		   entity.Type == EntityType.ENTITY_STONEHEAD or
+		   entity.Type == EntityType.ENTITY_GAPING_MAW or 
+		   entity.Type == EntityType.ENTITY_BROKEN_GAPING_MAW or 
+		   entity.Type == EntityType.ENTITY_CONSTANT_STONE_SHOOTER or 
+		   entity.Type == EntityType.ENTITY_QUAKE_GRIMACE or
+		   entity.Type == EntityType.ENTITY_BOMB_GRIMACE or
+		   entity.Type == EntityType.ENTITY_BRIMSTONE_HEAD or 
+		   entity.Type == EntityType.ENTITY_STONE_EYE then
 			local row, column = math.floor(entity.SpawnGridIndex/width), (entity.SpawnGridIndex)%width
 			grid[row][column] = Enums.OBSTACLE
 		end
