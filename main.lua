@@ -704,6 +704,227 @@ local function clearNeighboringSecrets(index, shape)
 	end
 end
 
+--Fill matrix with the floor's possible secret/super secret room locations by just looking at the map.
+local function findPossibilities()
+	
+	resetMatrix()
+	customSecretListIDs = {}
+	customSuperSecretListIDs = {}
+	secretFound = {}
+	superSecretFound = { }
+	local level = Game():GetLevel()
+	local rooms = level:GetRooms()
+	
+	--don't do anything in the ascent.
+	--don't do anything at home.
+	--don't do anything in greed mode.
+	if level.IsAscent(level) == true then return end
+	if level.GetStage(level) == 13 then return end
+	if Game().IsGreedMode(Game()) == true then return end
+	
+	--Iterate through each room and update the matrix.
+	
+	for i = 0, rooms.Size-1 do
+		local room = rooms:Get(i)
+		local index = room.GridIndex
+		local shape = room.Data.Shape
+		-- basic 1x1  			               horizontal closet 1x1    vertical closet 1x1
+		if shape == RoomShape.ROOMSHAPE_1x1 or shape == RoomShape.ROOMSHAPE_IH or shape == RoomShape.ROOMSHAPE_IV then
+			--index = only index in room.
+			
+			local type = room.Data.Type
+			
+			if type == RoomType.ROOM_SECRET then
+				matrix[math.floor(index/13) + 1][index%13 + 1] = Enums.SECRET
+			elseif type == RoomType.ROOM_SUPERSECRET then
+				matrix[math.floor(index/13) + 1][index%13 + 1] = Enums.SUPERSECRET
+			elseif type == RoomType.ROOM_ULTRASECRET then
+				matrix[math.floor(index/13) + 1][index%13 + 1] = Enums.ULTRASECRET
+			else
+				matrix[math.floor(index/13) + 1][index%13 + 1] = index
+			end
+			
+		 --	   vertical 1x2						   vertical closet 1x2
+		elseif shape == RoomShape.ROOMSHAPE_1x2 or shape == RoomShape.ROOMSHAPE_IIV then
+			--index = top index of room.
+			matrix[math.floor(index/13) + 1][index%13 + 1] = index
+			matrix[(math.floor(index/13) + 1) + 1][index%13 + 1] = index
+		
+		--	   horizontal 2x1                      horizontal closet 2x1
+		elseif shape == RoomShape.ROOMSHAPE_2x1 or shape == RoomShape.ROOMSHAPE_IIH then
+			--index = left index of room.
+			matrix[math.floor(index/13) + 1][index%13 + 1] = index
+			matrix[math.floor(index/13) + 1][(index%13 + 1) + 1] = index
+		
+		--	   2x2
+		elseif shape == RoomShape.ROOMSHAPE_2x2 or shape == RoomShape.ROOMSHAPE_LTL or shape == RoomShape.ROOMSHAPE_LTR or shape == RoomShape.ROOMSHAPE_LBL or shape == RoomShape.ROOMSHAPE_LBR then 
+			--index = topleft index of room.
+			if shape ~= RoomShape.ROOMSHAPE_LTL then matrix[math.floor(index/13) + 1][index%13 + 1] = index end
+			
+			--top right
+			if shape ~= RoomShape.ROOMSHAPE_LTR then matrix[math.floor(index/13) + 1][(index%13 + 1) + 1] = index end
+		
+			--bottom left
+			if shape ~= RoomShape.ROOMSHAPE_LBL then matrix[(math.floor(index/13) + 1) + 1][index%13 + 1] = index end
+			
+			--bottom right
+			if shape ~= RoomShape.ROOMSHAPE_LBR then matrix[(math.floor(index/13) + 1) + 1][(index%13 + 1) + 1] = index end
+		end
+	end
+	
+	
+	--Count the number of secret / super secret locations.
+	secretCount = 0
+	superSecretCount = 0
+	for i = 1, 13 do
+		for j = 1, 13 do
+			if matrix[i][j] == Enums.SECRET then
+				secretCount = secretCount + 1
+			elseif matrix[i][j] == Enums.SUPERSECRET then
+				superSecretCount = superSecretCount + 1
+			end
+		end
+	end
+	
+	--Don't do anything extra if the player has items that make the mod irrelevant.
+	if vanillaRevealSecret and vanillaRevealSuperSecret then return end
+	
+	--Update matrix with possible secret locations
+	for i = 1, 13 do
+		for j = 1, 13 do
+			--Unused room location slot.
+			if matrix[i][j] == Enums.NO_ROOM then
+				local uniqueNeighbors = 0
+				local totalNeighbors = 0
+				local neighborList = {}
+				local hasSpecialNeighbor = false
+				
+				--Check Top neighbor
+				if i > 1 and matrix[i-1][j] ~= Enums.NO_ROOM then 
+					local roomData = level.GetRoomByIdx(level, 13*(i-2) + (j-1)).Data
+					if roomData ~= nil then
+						roomType = roomData.Type
+						roomShape = roomData.Shape
+						--illegal top neighbors.
+						if roomType == RoomType.ROOM_BOSS or roomShape == RoomShape.ROOMSHAPE_IH or roomShape == RoomShape.ROOMSHAPE_IIH then
+							goto continue 
+						else
+							--more illegal top neighbors. We don't want to indicate to the player that we've found one though.
+							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
+								neighborList["Top"] = matrix[i-1][j]
+								uniqueNeighbors = uniqueNeighbors + 1
+								totalNeighbors = totalNeighbors+1
+							
+								--supersecret rooms can't spawn adjacent special rooms.
+								if roomType ~= RoomType.ROOM_DEFAULT then
+									hasSpecialNeighbor = true
+								end
+							end
+						end
+					end
+				end
+				--Check Left Neighbor
+				if j > 1 and matrix[i][j-1] ~= Enums.NO_ROOM then 
+					local roomData = level.GetRoomByIdx(level, 13*(i-1) + (j-2)).Data
+					if roomData ~= nil then
+						roomType = roomData.Type
+						roomShape = roomData.Shape
+						--illegal left neighbors.
+						if roomType == RoomType.ROOM_BOSS or roomShape == RoomShape.ROOMSHAPE_IV or roomShape == RoomShape.ROOMSHAPE_IIV then
+							goto continue
+						else
+							--more illegal left neighbors. We don't want to indicate to the player that we've found one though.
+							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
+								neighborList["Left"] = matrix[i][j-1]
+								totalNeighbors = totalNeighbors+1
+								
+								--ensure uniqueness
+								if neighborList["Left"] ~= neighborList["Top"] then	
+									uniqueNeighbors = uniqueNeighbors + 1
+								end
+								
+								
+								--supersecret rooms can't spawn adjacent special rooms.
+								if roomType ~= RoomType.ROOM_DEFAULT then
+									hasSpecialNeighbor = true
+								end
+							end
+						end
+					end
+				end
+				--Check bottom neighbor
+				if i < 13 and matrix[i+1][j] ~= Enums.NO_ROOM then 
+					local roomData = level.GetRoomByIdx(level, 13*(i) + (j-1)).Data
+					if roomData ~= nil then
+						roomType = roomData.Type
+						roomShape = roomData.Shape
+						--illegal bottom neighbors.
+						if roomType == RoomType.ROOM_BOSS or roomShape == RoomShape.ROOMSHAPE_IH or roomShape == RoomShape.ROOMSHAPE_IIH then
+							goto continue
+						else
+							--more illegal bottom neighbors. We don't want to indicate to the player that we've found one though.
+							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
+								neighborList["Bottom"] = matrix[i+1][j]
+								totalNeighbors = totalNeighbors+1
+								
+								--ensure uniqueness
+								if neighborList["Bottom"] ~= neighborList["Top"] and neighborList["Bottom"] ~= neighborList["Left"]  then	
+									uniqueNeighbors = uniqueNeighbors + 1
+								end
+								
+								--supersecret rooms can't spawn adjacent special rooms.
+								if roomType ~= RoomType.ROOM_DEFAULT then
+									hasSpecialNeighbor = true
+								end
+							end
+						end
+					end
+				end
+				--check right neighbor
+				if j < 13 and matrix[i][j+1] ~= Enums.NO_ROOM then
+					local roomData = level.GetRoomByIdx(level, 13*(i-1) + (j)).Data
+					if roomData ~= nil then
+						roomType = roomData.Type
+						roomShape = roomData.Shape
+						--illegal right neighbors
+						if roomType == RoomType.ROOM_BOSS or roomShape == RoomShape.ROOMSHAPE_IV or roomShape == RoomShape.ROOMSHAPE_IIV then
+							goto continue
+						else
+							--more illegal left neighbors. We don't want to indicate to the player that we've found one though.
+							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
+								neighborList["Right"] = matrix[i][j+1]
+								totalNeighbors = totalNeighbors+1
+								
+								--ensure uniqueness
+								if neighborList["Right"] ~= neighborList["Top"] and neighborList["Right"] ~= neighborList["Left"] and neighborList["Right"] ~= neighborList["Bottom"]  then	
+									uniqueNeighbors = uniqueNeighbors + 1
+								end
+								
+								--supersecret rooms can't spawn adjacent special rooms.
+								if roomType ~= RoomType.ROOM_DEFAULT then
+									hasSpecialNeighbor = true
+								end
+							end
+						end
+					end
+				end
+				
+				if uniqueNeighbors == 1 and totalNeighbors == 1 and hasSpecialNeighbor == false then
+					matrix[i][j] = Enums.SUPERSECRET_FALSE
+				elseif uniqueNeighbors > 1 then
+					matrix[i][j] = Enums.SECRET_FALSE
+				end
+			
+				::continue::
+			end
+		end
+	end
+	
+	--debugging
+	--printMatrix(true, true, true, true, true, true)
+	
+end
+
 --Remove potential secret room locations by checking grid locations.
 --Add remaining locations
 local function updateMap()
@@ -1568,229 +1789,6 @@ local function updateMap()
 	
 	--debugging
 	--printMatrix(true, true, true, true, true, true)
-end
-
---Fill matrix with the floor's possible secret/super secret room locations by just looking at the map.
-local function findPossibilities()
-	
-	resetMatrix()
-	customSecretListIDs = {}
-	customSuperSecretListIDs = {}
-	secretFound = {}
-	superSecretFound = { }
-	local level = Game():GetLevel()
-	local rooms = level:GetRooms()
-	
-	--don't do anything in the ascent.
-	--don't do anything at home.
-	--don't do anything in greed mode.
-	if level.IsAscent(level) == true then return end
-	if level.GetStage(level) == 13 then return end
-	if Game().IsGreedMode(Game()) == true then return end
-	
-	--Iterate through each room and update the matrix.
-	
-	for i = 0, rooms.Size-1 do
-		local room = rooms:Get(i)
-		local index = room.GridIndex
-		local shape = room.Data.Shape
-		-- basic 1x1  			               horizontal closet 1x1    vertical closet 1x1
-		if shape == RoomShape.ROOMSHAPE_1x1 or shape == RoomShape.ROOMSHAPE_IH or shape == RoomShape.ROOMSHAPE_IV then
-			--index = only index in room.
-			
-			local type = room.Data.Type
-			
-			if type == RoomType.ROOM_SECRET then
-				matrix[math.floor(index/13) + 1][index%13 + 1] = Enums.SECRET
-			elseif type == RoomType.ROOM_SUPERSECRET then
-				matrix[math.floor(index/13) + 1][index%13 + 1] = Enums.SUPERSECRET
-			elseif type == RoomType.ROOM_ULTRASECRET then
-				matrix[math.floor(index/13) + 1][index%13 + 1] = Enums.ULTRASECRET
-			else
-				matrix[math.floor(index/13) + 1][index%13 + 1] = index
-			end
-			
-		 --	   vertical 1x2						   vertical closet 1x2
-		elseif shape == RoomShape.ROOMSHAPE_1x2 or shape == RoomShape.ROOMSHAPE_IIV then
-			--index = top index of room.
-			matrix[math.floor(index/13) + 1][index%13 + 1] = index
-			matrix[(math.floor(index/13) + 1) + 1][index%13 + 1] = index
-		
-		--	   horizontal 2x1                      horizontal closet 2x1
-		elseif shape == RoomShape.ROOMSHAPE_2x1 or shape == RoomShape.ROOMSHAPE_IIH then
-			--index = left index of room.
-			matrix[math.floor(index/13) + 1][index%13 + 1] = index
-			matrix[math.floor(index/13) + 1][(index%13 + 1) + 1] = index
-		
-		--	   2x2
-		elseif shape == RoomShape.ROOMSHAPE_2x2 or shape == RoomShape.ROOMSHAPE_LTL or shape == RoomShape.ROOMSHAPE_LTR or shape == RoomShape.ROOMSHAPE_LBL or shape == RoomShape.ROOMSHAPE_LBR then 
-			--index = topleft index of room.
-			if shape ~= RoomShape.ROOMSHAPE_LTL then matrix[math.floor(index/13) + 1][index%13 + 1] = index end
-			
-			--top right
-			if shape ~= RoomShape.ROOMSHAPE_LTR then matrix[math.floor(index/13) + 1][(index%13 + 1) + 1] = index end
-		
-			--bottom left
-			if shape ~= RoomShape.ROOMSHAPE_LBL then matrix[(math.floor(index/13) + 1) + 1][index%13 + 1] = index end
-			
-			--bottom right
-			if shape ~= RoomShape.ROOMSHAPE_LBR then matrix[(math.floor(index/13) + 1) + 1][(index%13 + 1) + 1] = index end
-		end
-	end
-	
-	
-	--Count the number of secret / super secret locations.
-	secretCount = 0
-	superSecretCount = 0
-	for i = 1, 13 do
-		for j = 1, 13 do
-			if matrix[i][j] == Enums.SECRET then
-				secretCount = secretCount + 1
-			elseif matrix[i][j] == Enums.SUPERSECRET then
-				superSecretCount = superSecretCount + 1
-			end
-		end
-	end
-	
-	--Don't do anything extra if the player has items that make the mod irrelevant.
-	if vanillaRevealSecret and vanillaRevealSuperSecret then return end
-	
-	--Update matrix with possible secret locations
-	for i = 1, 13 do
-		for j = 1, 13 do
-			--Unused room location slot.
-			if matrix[i][j] == Enums.NO_ROOM then
-				local uniqueNeighbors = 0
-				local totalNeighbors = 0
-				local neighborList = {}
-				local hasSpecialNeighbor = false
-				
-				--Check Top neighbor
-				if i > 1 and matrix[i-1][j] ~= Enums.NO_ROOM then 
-					local roomData = level.GetRoomByIdx(level, 13*(i-2) + (j-1)).Data
-					if roomData ~= nil then
-						roomType = roomData.Type
-						roomShape = roomData.Shape
-						--illegal top neighbors.
-						if roomType == RoomType.ROOM_BOSS or roomShape == RoomShape.ROOMSHAPE_IH or roomShape == RoomShape.ROOMSHAPE_IIH then
-							goto continue 
-						else
-							--more illegal top neighbors. We don't want to indicate to the player that we've found one though.
-							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
-								neighborList["Top"] = matrix[i-1][j]
-								uniqueNeighbors = uniqueNeighbors + 1
-								totalNeighbors = totalNeighbors+1
-							
-								--supersecret rooms can't spawn adjacent special rooms.
-								if roomType ~= RoomType.ROOM_DEFAULT then
-									hasSpecialNeighbor = true
-								end
-							end
-						end
-					end
-				end
-				--Check Left Neighbor
-				if j > 1 and matrix[i][j-1] ~= Enums.NO_ROOM then 
-					local roomData = level.GetRoomByIdx(level, 13*(i-1) + (j-2)).Data
-					if roomData ~= nil then
-						roomType = roomData.Type
-						roomShape = roomData.Shape
-						--illegal left neighbors.
-						if roomType == RoomType.ROOM_BOSS or roomShape == RoomShape.ROOMSHAPE_IV or roomShape == RoomShape.ROOMSHAPE_IIV then
-							goto continue
-						else
-							--more illegal left neighbors. We don't want to indicate to the player that we've found one though.
-							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
-								neighborList["Left"] = matrix[i][j-1]
-								totalNeighbors = totalNeighbors+1
-								
-								--ensure uniqueness
-								if neighborList["Left"] ~= neighborList["Top"] then	
-									uniqueNeighbors = uniqueNeighbors + 1
-								end
-								
-								
-								--supersecret rooms can't spawn adjacent special rooms.
-								if roomType ~= RoomType.ROOM_DEFAULT then
-									hasSpecialNeighbor = true
-								end
-							end
-						end
-					end
-				end
-				--Check bottom neighbor
-				if i < 13 and matrix[i+1][j] ~= Enums.NO_ROOM then 
-					local roomData = level.GetRoomByIdx(level, 13*(i) + (j-1)).Data
-					if roomData ~= nil then
-						roomType = roomData.Type
-						roomShape = roomData.Shape
-						--illegal bottom neighbors.
-						if roomType == RoomType.ROOM_BOSS or roomShape == RoomShape.ROOMSHAPE_IH or roomShape == RoomShape.ROOMSHAPE_IIH then
-							goto continue
-						else
-							--more illegal bottom neighbors. We don't want to indicate to the player that we've found one though.
-							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
-								neighborList["Bottom"] = matrix[i+1][j]
-								totalNeighbors = totalNeighbors+1
-								
-								--ensure uniqueness
-								if neighborList["Bottom"] ~= neighborList["Top"] and neighborList["Bottom"] ~= neighborList["Left"]  then	
-									uniqueNeighbors = uniqueNeighbors + 1
-								end
-								
-								--supersecret rooms can't spawn adjacent special rooms.
-								if roomType ~= RoomType.ROOM_DEFAULT then
-									hasSpecialNeighbor = true
-								end
-							end
-						end
-					end
-				end
-				--check right neighbor
-				if j < 13 and matrix[i][j+1] ~= Enums.NO_ROOM then
-					local roomData = level.GetRoomByIdx(level, 13*(i-1) + (j)).Data
-					if roomData ~= nil then
-						roomType = roomData.Type
-						roomShape = roomData.Shape
-						--illegal right neighbors
-						if roomType == RoomType.ROOM_BOSS or roomShape == RoomShape.ROOMSHAPE_IV or roomShape == RoomShape.ROOMSHAPE_IIV then
-							goto continue
-						else
-							--more illegal left neighbors. We don't want to indicate to the player that we've found one though.
-							if roomType ~= RoomType.ROOM_SECRET and roomType ~= RoomType.ROOM_SUPERSECRET and roomType ~= RoomType.ROOM_ULTRASECRET then
-								neighborList["Right"] = matrix[i][j+1]
-								totalNeighbors = totalNeighbors+1
-								
-								--ensure uniqueness
-								if neighborList["Right"] ~= neighborList["Top"] and neighborList["Right"] ~= neighborList["Left"] and neighborList["Right"] ~= neighborList["Bottom"]  then	
-									uniqueNeighbors = uniqueNeighbors + 1
-								end
-								
-								--supersecret rooms can't spawn adjacent special rooms.
-								if roomType ~= RoomType.ROOM_DEFAULT then
-									hasSpecialNeighbor = true
-								end
-							end
-						end
-					end
-				end
-				
-				if uniqueNeighbors == 1 and totalNeighbors == 1 and hasSpecialNeighbor == false then
-					matrix[i][j] = Enums.SUPERSECRET_FALSE
-				elseif uniqueNeighbors > 1 then
-					matrix[i][j] = Enums.SECRET_FALSE
-				end
-			
-				::continue::
-			end
-		end
-	end
-	
-	--debugging
-	--printMatrix(true, true, true, true, true, true)
-	
-	--new level is called after new room, so I'm manually calling this function here.
-	updateMap()
 end
 
 --Remove some potential locations from map when you enter a real location.
