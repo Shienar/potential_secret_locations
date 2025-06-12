@@ -945,7 +945,7 @@ local function updateMap()
 	--Don't do anything in boss rooms (e.g. Mega Satan)
 	--Don't do anything in I AM ERROR rooms.
 	local type = Game().GetRoom(Game()).GetType(Game().GetRoom(Game()))
-	if type == RoomType.ROOM_DUNGEON or type == RoomType.ROOM_ERROR or type == RoomType.ROOM_BOSS then
+	if type == RoomType.ROOM_DUNGEON or type == RoomType.ROOM_ERROR or type == RoomType.ROOM_BOSS or type == RoomType.ROOM_BLACK_MARKET then
 		return
 	end
 	
@@ -1924,10 +1924,17 @@ local function onExplosion(mod, effect)
 		local sprite = effect.GetSprite(effect)
 		local fileName = sprite.GetFilename(sprite)
 		if fileName == "gfx/1000.001_Bomb Explosion.anm2" then
-			local position = effect.Position
+			
 			
 			local level = Game().GetLevel(Game())
 			local room = level.GetCurrentRoom(level)
+			local type = room.GetType(room)
+			--Don't do anything in crawlspaces, error rooms, boss rooms, or black markets.
+			if type == RoomType.ROOM_DUNGEON or type == RoomType.ROOM_ERROR or type == RoomType.ROOM_BOSS or type == RoomType.ROOM_BLACK_MARKET then
+				return
+			end
+			
+			local position = effect.Position
 			local width = room.GetGridWidth(room)
 			local shape = room.GetRoomShape(room)
 			local index = level.GetCurrentRoomDesc(level).GridIndex
