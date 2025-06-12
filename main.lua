@@ -928,7 +928,10 @@ local function updateMap()
 	
 	
 	--Don't do anything in crawlspaces.
-	if Game().GetRoom(Game()).GetType(Game().GetRoom(Game())) == RoomType.ROOM_DUNGEON then
+	--Don't do anything in boss rooms (e.g. Mega Satan)
+	--Don't do anything in I AM ERROR rooms.
+	local type = Game().GetRoom(Game()).GetType(Game().GetRoom(Game()))
+	if type == RoomType.ROOM_DUNGEON or type == RoomType.ROOM_ERROR or type == RoomType.ROOM_BOSS then
 		return
 	end
 	
