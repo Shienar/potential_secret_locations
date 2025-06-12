@@ -37,6 +37,10 @@ local Enums = {
 	OBSTACLE = 29,
 	EMPTY = 30,
 	DOOR = 31,
+	
+	--Maximum distance between bomb explosion and secret door.
+	--Uses vector coordinate distance, not grid indexes.
+	RADIUS = 80
 }
 
 local function resetMatrix()
@@ -696,6 +700,16 @@ local function clearNeighboringSecrets(index, shape)
 			end
 		end
 	end
+end
+
+local function gridIndexToVector(index, width)
+	--NOTE:
+	--	index = (width)*row + column
+	--	Given index i, column = index%width and row = floor(index/width)
+	--	Given a position vector, row = ((position.Y)-120/40 and column = (position.X-40)/40
+	-- 	Therefore, position.X = (40*column)+40 and position.Y = 120+(40*row) 
+	local row, column = math.floor(index/width), index%width
+	return Vector((40*column)+40, 120+(40*row))
 end
 
 --Fill matrix with the floor's possible secret/super secret room locations by just looking at the map.
@@ -1904,6 +1918,450 @@ local function resetValues()
 	hasLuna = false
 end
 
+--Clears potential rooms if an explosion happens near a room.
+local function onExplosion(mod, effect)
+	if effect ~= nil then 
+		local sprite = effect.GetSprite(effect)
+		local fileName = sprite.GetFilename(sprite)
+		if fileName == "gfx/1000.001_Bomb Explosion.anm2" then
+			local position = effect.Position
+			
+			local level = Game().GetLevel(Game())
+			local room = level.GetCurrentRoom(level)
+			local width = room.GetGridWidth(room)
+			local shape = room.GetRoomShape(room)
+			local index = level.GetCurrentRoomDesc(level).GridIndex
+			local row, column = ((math.floor(index/13) + 1)), ((index % 13) + 1)
+			
+			if shape == RoomShape.ROOMSHAPE_1x1 or shape == RoomShape.ROOMSHAPE_IH or shape == RoomShape.ROOMSHAPE_IV then
+				--[[
+				--   1
+				-- 3 X 4
+				--   2
+				-- 1 = grid index 22
+				-- 2 = grid index 112
+				-- 3 = grid index 61
+				-- 4 = grind index 73]]
+				
+				if position.Distance(position, gridIndexToVector(22, width)) < Enums.RADIUS and 
+					row > 1 and
+				   (matrix[row-1][column] == Enums.SECRET_FALSE or matrix[row-1][column] == Enums.SUPERSECRET_FALSE) then
+						matrix[row-1][column] = Enums.NO_ROOM 
+						removeRoom(index, -13)
+				end
+				if position.Distance(position, gridIndexToVector(112, width)) < Enums.RADIUS and 
+					row < 13 and
+				   (matrix[row+1][column] == Enums.SECRET_FALSE or matrix[row+1][column] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+1][column] = Enums.NO_ROOM
+						removeRoom(index, 13)
+				end
+				if position.Distance(position, gridIndexToVector(61, width)) < Enums.RADIUS and 
+				   column > 1 and
+				   (matrix[row][column-1] == Enums.SECRET_FALSE or matrix[row][column-1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row][column - 1] = Enums.NO_ROOM 
+						removeRoom(index, -1)
+				end
+				if position.Distance(position, gridIndexToVector(73, width)) < Enums.RADIUS and 
+					column < 13 and
+				   (matrix[row][column+1] == Enums.SECRET_FALSE or matrix[row][column+1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row][column + 1] = Enums.NO_ROOM 
+						removeRoom(index, 1)
+				end
+			elseif shape == RoomShape.ROOMSHAPE_2x1 or shape == RoomShape.ROOMSHAPE_IIH then
+				--[[horizontal 2x1
+				--   3 4
+				-- 1 X X 2
+				--   5 6
+				-- 1 = grid index 113
+				-- 2 = grid index 138
+				-- 3 = grid index 35
+				-- 4 = grid index 48
+				-- 5 = grid index 203
+				-- 6 = grid index 216]]
+				
+				if position.Distance(position, gridIndexToVector(113, width)) < Enums.RADIUS and 
+					column > 1 and
+				   (matrix[row][column-1] == Enums.SECRET_FALSE or matrix[row][column-1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row][column - 1] = Enums.NO_ROOM 
+						removeRoom(index, -1)
+				end
+				if position.Distance(position, gridIndexToVector(138, width)) < Enums.RADIUS and 
+					column < 12 and
+				   (matrix[row][column+2] == Enums.SECRET_FALSE or matrix[row][column+2] == Enums.SUPERSECRET_FALSE) then
+						matrix[row][column + 2] = Enums.NO_ROOM 
+						removeRoom(index, 2)
+				end
+				if position.Distance(position, gridIndexToVector(35, width)) < Enums.RADIUS and 
+					row > 1 and
+				   (matrix[row-1][column] == Enums.SECRET_FALSE or matrix[row-1][column] == Enums.SUPERSECRET_FALSE) then
+						matrix[row-1][column] = Enums.NO_ROOM 
+						removeRoom(index, -13)
+				end
+				if position.Distance(position, gridIndexToVector(48, width)) < Enums.RADIUS and 
+					row > 1 and column < 13 and
+				   (matrix[row-1][column+1] == Enums.SECRET_FALSE or matrix[row-1][column+1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row-1][column + 1] = Enums.NO_ROOM
+						removeRoom(index, -12)
+				end
+				if position.Distance(position, gridIndexToVector(203, width)) < Enums.RADIUS and 
+					row < 13 and
+				   (matrix[row+1][column] == Enums.SECRET_FALSE or matrix[row+1][column] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+1][column] = Enums.NO_ROOM 
+						removeRoom(index, 13)
+				end
+				if position.Distance(position, gridIndexToVector(216, width)) < Enums.RADIUS and 
+					row < 13 and column < 13 and
+				   (matrix[row+1][column+1] == Enums.SECRET_FALSE or matrix[row+1][column+1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+1][column + 1] = Enums.NO_ROOM
+						removeRoom(index, 14)
+				end
+			elseif shape == RoomShape.ROOMSHAPE_1x2 or shape == RoomShape.ROOMSHAPE_IIV then
+				--[[vertical 1x2
+				--    1
+				-- 	3 X 5
+				--  4 X 6
+				--    2
+				-- 1 = grid index 22
+				-- 2 = grid index 217
+				-- 3 = grid index 61
+				-- 4 = grid index 166
+				-- 5 = grid index 73
+				-- 6 = grid index 178]]
+				
+				if position.Distance(position, gridIndexToVector(22, width)) < Enums.RADIUS and 
+					row > 1 and
+				   (matrix[row-1][column] == Enums.SECRET_FALSE or matrix[row-1][column] == Enums.SUPERSECRET_FALSE) then
+						matrix[row - 1][column] = Enums.NO_ROOM
+						removeRoom(index, -13)
+				end
+				if position.Distance(position, gridIndexToVector(217, width)) < Enums.RADIUS and 
+					row < 12 and 
+				   (matrix[row+2][column] == Enums.SECRET_FALSE or matrix[row+2][column] == Enums.SUPERSECRET_FALSE) then
+						matrix[row + 2][column] = Enums.NO_ROOM
+						removeRoom(index, 26)
+				end
+				if position.Distance(position, gridIndexToVector(61, width)) < Enums.RADIUS and 
+					column > 1 and
+				   (matrix[row][column-1] == Enums.SECRET_FALSE or matrix[row][column-1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row][column-1] = Enums.NO_ROOM 
+						removeRoom(index, -1)
+				end
+				if position.Distance(position, gridIndexToVector(166, width)) < Enums.RADIUS and 
+					column > 1 and row < 13 and
+				   (matrix[row+1][column-1] == Enums.SECRET_FALSE or matrix[row+1][column-1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+1][column-1] = Enums.NO_ROOM 
+						removeRoom(index, 12)
+				end
+				if position.Distance(position, gridIndexToVector(73, width)) < Enums.RADIUS and 
+					column < 13 and
+				   (matrix[row][column+1] == Enums.SECRET_FALSE or matrix[row][column+1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row][column+1] = Enums.NO_ROOM 
+						removeRoom(index, 1)
+				end
+				if position.Distance(position, gridIndexToVector(178, width)) < Enums.RADIUS and 
+					column < 13 and row < 13 and
+				   (matrix[row+1][column+1] == Enums.SECRET_FALSE or matrix[row+1][column+1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+1][column+1] = Enums.NO_ROOM 
+						removeRoom(index, 14)
+				end
+			elseif shape == RoomShape.ROOMSHAPE_2x2 then
+				--[[
+				--   3 4
+				-- 2 X X 5
+				-- 1 X X 6
+				--   7 8
+				-- 1 = grid index 309
+				-- 2 = grid index 113
+				-- 3 = grid index 35
+				-- 4 = grid index 48
+				-- 5 = grid index 138
+				-- 6 = grid index 334
+				-- 7 = grid index 399
+				-- 8 = grid index 412
+				]]
+				
+				if position.Distance(position, gridIndexToVector(308, width)) < Enums.RADIUS and 
+					row < 13 and column > 1 and
+				   (matrix[row+1][column-1] == Enums.SECRET_FALSE or matrix[row+1][column-1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+1][column-1] = Enums.NO_ROOM 
+						removeRoom(index, 12)
+				end
+				if position.Distance(position, gridIndexToVector(113, width)) < Enums.RADIUS and 
+					column > 1 and
+				   (matrix[row][column-1] == Enums.SECRET_FALSE or matrix[row][column-1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row][column-1] = Enums.NO_ROOM 
+						removeRoom(index, -1)
+				end
+				if position.Distance(position, gridIndexToVector(35, width)) < Enums.RADIUS and 
+					row > 1 and
+				   (matrix[row-1][column] == Enums.SECRET_FALSE or matrix[row-1][column] == Enums.SUPERSECRET_FALSE) then
+						matrix[row - 1][column] = Enums.NO_ROOM 
+						removeRoom(index, -13)
+				end
+				if position.Distance(position, gridIndexToVector(48, width)) < Enums.RADIUS and 
+					row > 1 and column < 13 and
+				   (matrix[row-1][column+1] == Enums.SECRET_FALSE or matrix[row-1][column+1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row - 1][column+1] = Enums.NO_ROOM 
+						removeRoom(index, -12)
+				end
+				if position.Distance(position, gridIndexToVector(138, width)) < Enums.RADIUS and 
+					column < 12 and
+				   (matrix[row][column+2] == Enums.SECRET_FALSE or matrix[row][column+2] == Enums.SUPERSECRET_FALSE) then
+						matrix[row][column+2] = Enums.NO_ROOM 
+						removeRoom(index, 2)
+				end
+				if position.Distance(position, gridIndexToVector(334, width)) < Enums.RADIUS and 
+					row < 13 and column < 12 and
+				   (matrix[row+1][column+2] == Enums.SECRET_FALSE or matrix[row+1][column+2] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+1][column+2] = Enums.NO_ROOM 
+						removeRoom(index, 15)
+				end
+				if position.Distance(position, gridIndexToVector(399, width)) < Enums.RADIUS and 
+					row < 12 and
+				   (matrix[row+2][column] == Enums.SECRET_FALSE or matrix[row+2][column] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+2][column] = Enums.NO_ROOM
+						removeRoom(index, 26)
+				end
+				if position.Distance(position, gridIndexToVector(412, width)) < Enums.RADIUS and 
+					row < 12 and column < 13 and 
+				   (matrix[row+2][column+1] == Enums.SECRET_FALSE or matrix[row+2][column+1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+2][column+1] = Enums.NO_ROOM 
+						removeRoom(index, 27)
+				end
+			elseif shape == RoomShape.ROOMSHAPE_LTR then
+				--[[top-right square missing
+				--    3
+				--	2 X 4
+				--	1 X X 5
+				--	  6 7
+				-- 1 = grid index 309
+				-- 2 = grid index 113
+				-- 3 = grid index 35
+				-- 4 = grid index 125 244
+				-- 5 = grid index 334
+				-- 6 = grid index 399
+				-- 7 = grid index 412]]
+				
+				if position.Distance(position, gridIndexToVector(309, width)) < Enums.RADIUS and 
+					row < 13 and column > 1 and
+				   (matrix[row+1][column-1] == Enums.SECRET_FALSE or matrix[row+1][column-1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+1][column-1] = Enums.NO_ROOM 
+						removeRoom(index, 12)
+				end
+				if position.Distance(position, gridIndexToVector(113, width)) < Enums.RADIUS and 
+					column > 1 and
+				   (matrix[row][column-1] == Enums.SECRET_FALSE or matrix[row][column-1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row][column-1] = Enums.NO_ROOM
+						removeRoom(index, -1)
+				end
+				if position.Distance(position, gridIndexToVector(35, width)) < Enums.RADIUS and 
+					row > 1 and 
+				   (matrix[row-1][column] == Enums.SECRET_FALSE or matrix[row-1][column] == Enums.SUPERSECRET_FALSE) then
+						matrix[row-1][column] = Enums.NO_ROOM 
+						removeRoom(index, -13)
+				end
+				if (position.Distance(position, gridIndexToVector(125, width)) < Enums.RADIUS or 
+				   position.Distance(position, gridIndexToVector(244, width)) < Enums.RADIUS) and 
+				   column < 13 and
+				   (matrix[row][column+1] == Enums.SECRET_FALSE or matrix[row][column+1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row][column+1] = Enums.NO_ROOM
+						removeRoom(index, 1)
+				end
+				if position.Distance(position, gridIndexToVector(334, width)) < Enums.RADIUS and 
+					column < 12 and row < 13 and
+				   (matrix[row+1][column+2] == Enums.SECRET_FALSE or matrix[row+1][column+2] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+1][column+2] = Enums.NO_ROOM 
+						removeRoom(index, 15)
+				end
+				if position.Distance(position, gridIndexToVector(399, width)) < Enums.RADIUS and 
+					row < 12 and
+				   (matrix[row+2][column] == Enums.SECRET_FALSE or matrix[row+2][column] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+2][column] = Enums.NO_ROOM
+						removeRoom(index, 26)
+				end
+				if position.Distance(position, gridIndexToVector(412, width)) < Enums.RADIUS and 
+					row < 12 and column < 13 and
+				   (matrix[row+2][column+1] == Enums.SECRET_FALSE or matrix[row+2][column+1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+2][column+1] = Enums.NO_ROOM
+						removeRoom(index, 27)
+				end
+			elseif shape == RoomShape.ROOMSHAPE_LTL then
+				--[[top-left square missing
+				--		3
+				--	  2 X 4
+				--	1 X X 5
+				--	  6 7
+				-- 1 = grid index 309
+				-- 2 = grid index 126 231
+				-- 3 = grid index 48
+				-- 4 = grid index 138
+				-- 5 = grid index 334
+				-- 6 = grid index 399
+				-- 7 = grid index 412]]
+				
+				if position.Distance(position, gridIndexToVector(309, width)) < Enums.RADIUS and 
+					row < 13 and column > 1 and
+				   (matrix[row+1][column-1] == Enums.SECRET_FALSE or matrix[row+1][column-1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+1][column-1] = Enums.NO_ROOM 
+						removeRoom(index, 12)
+				end
+				if (position.Distance(position, gridIndexToVector(126, width)) < Enums.RADIUS or
+				   position.Distance(position, gridIndexToVector(231, width)) < Enums.RADIUS) and 
+				   (matrix[row][column] == Enums.SECRET_FALSE or matrix[row][column] == Enums.SUPERSECRET_FALSE) then
+				   
+					matrix[row][column] = Enums.NO_ROOM
+					removeRoom(index, 0)
+				end
+				if position.Distance(position, gridIndexToVector(48, width)) < Enums.RADIUS and 
+				    row > 1 and column < 13 and 
+				    (matrix[row-1][column+1] == Enums.SECRET_FALSE or matrix[row-1][column+1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row-1][column+1] = Enums.NO_ROOM 
+						removeRoom(index, -12)
+				end
+				if position.Distance(position, gridIndexToVector(138, width)) < Enums.RADIUS and 
+					column < 12 and
+				   (matrix[row][column+2] == Enums.SECRET_FALSE or matrix[row][column+2] == Enums.SUPERSECRET_FALSE) then
+						matrix[row][column+2] = Enums.NO_ROOM
+						removeRoom(index, 2)
+				end
+				if position.Distance(position, gridIndexToVector(334, width)) < Enums.RADIUS and 
+					row < 13 and column < 12 and
+				   (matrix[row+1][column+2] == Enums.SECRET_FALSE or matrix[row+1][column+2] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+1][column+2] = Enums.NO_ROOM 
+						removeRoom(index, 15)
+				end
+				if position.Distance(position, gridIndexToVector(399, width)) < Enums.RADIUS and 
+					row < 12 and
+				   (matrix[row+2][column] == Enums.SECRET_FALSE or matrix[row+2][column] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+2][column] = Enums.NO_ROOM 
+						removeRoom(index, 26)
+				end
+				if position.Distance(position, gridIndexToVector(412, width)) < Enums.RADIUS and 
+					row < 12 and column < 13 and
+				   (matrix[row+2][column+1] == Enums.SECRET_FALSE or matrix[row+2][column+1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+2][column+1] = Enums.NO_ROOM 
+						removeRoom(index, 27)
+				end
+			elseif shape == RoomShape.ROOMSHAPE_LBR then
+				--[[bottom-right square missing
+				--    3 4
+				--	2 X X 5
+				--	1 X 6
+				--    7
+				-- 1 = grid index 309
+				-- 2 = grid index 113
+				-- 3 = grid index 35
+				-- 4 = grid index 48
+				-- 5 = grid index 138
+				-- 6 = grid index 321 216
+				-- 7 = grid index 399]]
+				
+				if position.Distance(position, gridIndexToVector(309, width)) < Enums.RADIUS and 
+					row < 13 and column > 1 and 
+				   (matrix[row+1][column-1] == Enums.SECRET_FALSE or matrix[row+1][column-1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+1][column-1] = Enums.NO_ROOM 
+						removeRoom(index, 12)
+				end
+				if position.Distance(position, gridIndexToVector(113, width)) < Enums.RADIUS and 
+					column > 1 and
+				   (matrix[row][column-1] == Enums.SECRET_FALSE or matrix[row][column-1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row][column-1] = Enums.NO_ROOM
+						removeRoom(index, -1)
+				end
+				if position.Distance(position, gridIndexToVector(35, width)) < Enums.RADIUS and 
+					row > 1 and
+				   (matrix[row-1][column] == Enums.SECRET_FALSE or matrix[row-1][column] == Enums.SUPERSECRET_FALSE) then
+						matrix[row - 1][column] = Enums.NO_ROOM 
+						removeRoom(index, -13)
+				end
+				if position.Distance(position, gridIndexToVector(48, width)) < Enums.RADIUS and 
+					row > 1 and column < 13 and
+				   (matrix[row-1][column+1] == Enums.SECRET_FALSE or matrix[row-1][column+1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row-1][column+1] = Enums.NO_ROOM
+						removeRoom(index, -12)
+				end
+				if position.Distance(position, gridIndexToVector(138, width)) < Enums.RADIUS and 
+					column < 12 and
+				   (matrix[row][column+2] == Enums.SECRET_FALSE or matrix[row][column+2] == Enums.SUPERSECRET_FALSE) then
+						matrix[row][column+2] = Enums.NO_ROOM
+						removeRoom(index, 2)
+				end
+				if (position.Distance(position, gridIndexToVector(321, width)) < Enums.RADIUS or 
+				   position.Distance(position, gridIndexToVector(216, width)) < Enums.RADIUS) and 
+				   row < 13 and column < 13 and
+				   (matrix[row+1][column+1] == Enums.SECRET_FALSE or matrix[row+1][column+1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+1][column+1] = Enums.NO_ROOM 
+						removeRoom(index, 14)
+				end
+				if position.Distance(position, gridIndexToVector(399, width)) < Enums.RADIUS and 
+					row < 12 and
+				   (matrix[row+2][column] == Enums.SECRET_FALSE or matrix[row+2][column] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+2][column] = Enums.NO_ROOM
+						removeRoom(index, 26)
+				end
+			elseif shape == RoomShape.ROOMSHAPE_LBL then
+				--[[bottom-left square missing
+				--    3 4
+				--	2 X X 5
+				--	  1 X 6
+				--    	7
+				-- 1 = grid index 203 322
+				-- 2 = grid index 113
+				-- 3 = grid index 35
+				-- 4 = grid index 48
+				-- 5 = grid index 138
+				-- 6 = grid index 334
+				-- 7 = grid index 412]]
+				
+				if (position.Distance(position, gridIndexToVector(203, width)) < Enums.RADIUS or
+				   position.Distance(position, gridIndexToVector(322, width)) < Enums.RADIUS) and 
+				   row < 13 and
+				   (matrix[row+1][column] == Enums.SECRET_FALSE or matrix[row+1][column] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+1][column] = Enums.NO_ROOM 
+						removeRoom(index, 13)
+				end
+				if position.Distance(position, gridIndexToVector(113, width)) < Enums.RADIUS and 
+					column > 1 and
+				   (matrix[row][column-1] == Enums.SECRET_FALSE or matrix[row][column-1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row][column-1] = Enums.NO_ROOM 
+						removeRoom(index, -1)
+				end
+				if position.Distance(position, gridIndexToVector(35, width)) < Enums.RADIUS and 
+					row > 1 and
+				   (matrix[row-1][column] == Enums.SECRET_FALSE or matrix[row-1][column] == Enums.SUPERSECRET_FALSE) then
+						matrix[row-1][column]= Enums.NO_ROOM
+						removeRoom(index, -13)
+				end
+				if position.Distance(position, gridIndexToVector(48, width)) < Enums.RADIUS and 
+					row > 1 and column < 13 and
+				   (matrix[row-1][column+1] == Enums.SECRET_FALSE or matrix[row-1][column+1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row-1][column + 1] = Enums.NO_ROOM 
+						removeRoom(index, -12)
+				end
+				if position.Distance(position, gridIndexToVector(138, width)) < Enums.RADIUS and 
+					column < 12 and
+				   (matrix[row][column+2] == Enums.SECRET_FALSE or matrix[row][column+2] == Enums.SUPERSECRET_FALSE) then
+						matrix[row][column+2] = Enums.NO_ROOM
+						removeRoom(index, 2)
+				end
+				if position.Distance(position, gridIndexToVector(334, width)) < Enums.RADIUS and 
+					row < 13 and column < 12 and
+				   (matrix[row+1][column+2] == Enums.SECRET_FALSE or matrix[row+1][column+2] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+1][column+2] = Enums.NO_ROOM
+						removeRoom(index, 15)
+				end
+				if position.Distance(position, gridIndexToVector(412, width)) < Enums.RADIUS and 
+					row < 12 and column < 13 and
+				   (matrix[row+2][column+1] == Enums.SECRET_FALSE or matrix[row+2][column+1] == Enums.SUPERSECRET_FALSE) then
+						matrix[row+2][column+1] = Enums.NO_ROOM
+						removeRoom(index, 27)
+				end
+			end
+			
+		end
+	end
+end
+
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, updateMap)
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, onEnterSecret)
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_LEVEL, findPossibilities)
@@ -1911,3 +2369,4 @@ secretMod:AddCallback(ModCallbacks.MC_USE_CARD, onCard)
 secretMod:AddCallback(ModCallbacks.MC_PRE_USE_ITEM, onActive)
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, checkCollectibles)
 secretMod:AddCallback(ModCallbacks.MC_POST_GAME_STARTED, resetValues)
+secretMod:AddCallback(ModCallbacks.MC_POST_EFFECT_UPDATE, onExplosion)
