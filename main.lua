@@ -61,6 +61,8 @@ end
 
 --Adds rooms to the map if needed.
 local function searchForMapAdditions(row, column, index, row_offset, column_offset)
+	if matrix[1] == nil then return end
+	
 	if (row+row_offset) > 0 and (row+row_offset) < 14 and (column+column_offset) > 0 and (column+column_offset) < 14 then
 		local index_offset = 13*row_offset + column_offset
 		if matrix[row+row_offset][column+column_offset] == Enums.SECRET_FALSE or matrix[row+row_offset][column+column_offset] == Enums.SECRET then 
@@ -169,6 +171,8 @@ local function clearFakeSecrets(isSuperSecret)
 			removeRoom(v)
 		end
 				
+		if matrix[1] == nil then return end
+		
 		--Remove fake secret rooms on matrix
 		for i = 1, 13 do
 			for j = 1, 13 do
@@ -183,6 +187,8 @@ local function clearFakeSecrets(isSuperSecret)
 			removeRoom(v)
 		end
 				
+		if matrix[1] == nil then return end
+		
 		--Remove fake secret rooms on matrix
 		for i = 1, 13 do
 			for j = 1, 13 do
@@ -195,6 +201,8 @@ local function clearFakeSecrets(isSuperSecret)
 end
 
 local function checkNeighborsForReal(index, shape)
+	
+	if matrix[1] == nil then return end
 	
 	if shape == nil then shape = RoomShape.ROOMSHAPE_1x1 end
 	
@@ -384,6 +392,8 @@ end
 --index = level.GetCurrentRoomDesc(level).GridIndex
 --Clears neighboring secrets depending on room shape.
 local function clearNeighboringSecrets(index, shape)
+
+	if matrix[1] == nil then return end
 
 	if shape == nil then shape = RoomShape.ROOMSHAPE_1x1 end
 	
@@ -802,6 +812,8 @@ local function findPossibilities()
 		for j = 1, 13 do
 			--Unused room location slot.
 			if matrix[i][j] == Enums.NO_ROOM then
+				--A secret room can spawn bordering only an L room.
+				--Proof: TEKG 1CBY (Stage 3 - Caves 1)
 				local uniqueNeighbors = 0
 				local totalNeighbors = 0
 				local neighborList = {}
@@ -919,7 +931,7 @@ local function findPossibilities()
 				
 				if uniqueNeighbors == 1 and totalNeighbors == 1 and hasSpecialNeighbor == false then
 					matrix[i][j] = Enums.SUPERSECRET_FALSE
-				elseif uniqueNeighbors > 1 then
+				elseif uniqueNeighbors > 1 or (uniqueNeighbors == 1 and totalNeighbors == 2) then
 					matrix[i][j] = Enums.SECRET_FALSE
 				end
 			
@@ -945,16 +957,14 @@ local function updateMap()
 	--Don't do anything in boss rooms (e.g. Mega Satan)
 	--Don't do anything in I AM ERROR rooms.
 	local type = Game().GetRoom(Game()).GetType(Game().GetRoom(Game()))
-	if type == RoomType.ROOM_DUNGEON or type == RoomType.ROOM_ERROR or type == RoomType.ROOM_BOSS or type == RoomType.ROOM_BLACK_MARKET then
+	if type == RoomType.ROOM_DUNGEON or type == RoomType.ROOM_ERROR or type == RoomType.ROOM_BOSS or type == RoomType.ROOM_BLACK_MARKET or type == RoomType.ROOM_BLACK_MARKET then
 		return
 	end
 	
 	--new room callback happens before new level callback, but we don't 
 	--want to do anything if the level hasn't been loaded yet.
-	if matrix[1] == nil then
-		resetMatrix() 
-		return
-	end
+	if matrix[1] == nil then return end
+
 	
 	
 	local level = Game():GetLevel()
@@ -1920,6 +1930,8 @@ end
 
 --Clears potential rooms if an explosion happens near a room.
 local function onExplosion(mod, effect)
+	if matrix[1] == nil then return end
+
 	if effect ~= nil then 
 		local sprite = effect.GetSprite(effect)
 		local fileName = sprite.GetFilename(sprite)
@@ -1930,7 +1942,7 @@ local function onExplosion(mod, effect)
 			local room = level.GetCurrentRoom(level)
 			local type = room.GetType(room)
 			--Don't do anything in crawlspaces, error rooms, boss rooms, or black markets.
-			if type == RoomType.ROOM_DUNGEON or type == RoomType.ROOM_ERROR or type == RoomType.ROOM_BOSS or type == RoomType.ROOM_BLACK_MARKET then
+			if type == RoomType.ROOM_DUNGEON or type == RoomType.ROOM_ERROR or type == RoomType.ROOM_BOSS or type == RoomType.ROOM_BLACK_MARKET or type == RoomType.ROOM_BOSSRUSH then
 				return
 			end
 			
@@ -2369,6 +2381,12 @@ local function onExplosion(mod, effect)
 	end
 end
 
+local function onContinued(mod, isContinued)
+	if isContinued then
+		findPossibilities()
+	end
+end
+
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, updateMap)
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, onEnterSecret)
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_LEVEL, findPossibilities)
@@ -2376,4 +2394,5 @@ secretMod:AddCallback(ModCallbacks.MC_USE_CARD, onCard)
 secretMod:AddCallback(ModCallbacks.MC_PRE_USE_ITEM, onActive)
 secretMod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, checkCollectibles)
 secretMod:AddCallback(ModCallbacks.MC_POST_GAME_STARTED, resetValues)
+secretMod:AddCallback(ModCallbacks.MC_POST_GAME_STARTED, onContinued)
 secretMod:AddCallback(ModCallbacks.MC_POST_EFFECT_UPDATE, onExplosion)
