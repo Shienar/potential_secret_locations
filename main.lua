@@ -1897,6 +1897,9 @@ end
 
 --Check if isaac has vanilla objects that reveal secret locations.
 local function checkCollectibles()
+
+	if Game().IsGreedMode(Game()) == true then return end
+
 	local player = Isaac.GetPlayer()
 	local level = Game().GetLevel(Game())
 	local index = level.GetCurrentRoomDesc(level).GridIndex
