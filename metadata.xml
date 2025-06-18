@@ -24,7 +24,7 @@ Other Notes:
 TLDR: You will see extra room icons for possible secret and super secret room locations as you explore the map. Some of these icons will get removed as you explore more of the map, pick up items, or enter the &quot;real&quot; secret or super secret rooms.
 
 Github: https://github.com/Shienar/potential_secret_locations</description>
-    <version>1.20</version>
+    <version>1.22</version>
     <visibility>Public</visibility>
     <tag id="Lua"/>
     <tag id="Graphics"/>

@@ -1902,8 +1902,10 @@ local function checkCollectibles()
 
 	local player = Isaac.GetPlayer()
 	local level = Game().GetLevel(Game())
+	local room = level.GetCurrentRoom(level)
 	local index = level.GetCurrentRoomDesc(level).GridIndex
-	local shape = level.GetCurrentRoom(level).GetRoomShape(level.GetCurrentRoom(level))
+	local shape = room.GetRoomShape(room)
+	local type = room.GetType(room)
 	
 	--player has blue map or spelunker's hat.
 	if (vanillaRevealSuperSecret == false or vanillaRevealSecret == false) and (player.HasCollectible(player, CollectibleType.COLLECTIBLE_BLUE_MAP, true) or player.HasCollectible(player, CollectibleType.COLLECTIBLE_SPELUNKER_HAT, true) or player.HasCollectible(player, CollectibleType.COLLECTIBLE_MIND, true) or player.HasCollectible(player, CollectibleType.COLLECTIBLE_XRAY_VISION, true)) then 
@@ -1920,8 +1922,11 @@ local function checkCollectibles()
 	end
 	
 	--dog tooth: clear fake adjacent possibilities if none of them are real.
-	if player.HasCollectible(player, CollectibleType.COLLECTIBLE_DOG_TOOTH, true) and checkNeighborsForReal(index, shape) == false then
-		clearNeighboringSecrets(index, shape)
+	if player.HasCollectible(player, CollectibleType.COLLECTIBLE_DOG_TOOTH, true) and
+		(type ~= RoomType.ROOM_ERROR and type ~= RoomType.ROOM_DEVIL and type ~= RoomType.ROOM_ANGEL 
+		and type ~= RoomType.ROOM_BOSSRUSH and type ~= RoomType.ROOM_BLACK_MARKET) and 
+		checkNeighborsForReal(index, shape) == false then
+			clearNeighboringSecrets(index, shape)
 	end
 end
 
